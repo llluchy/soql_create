@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOQL Creator</title>
+    <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>SOQL Creator</h1>
+            <p class="subtitle">快速生成SOQL查询语句</p>
+        </header>
+
+        <!-- 消息提示区域 -->
+        <div id="messageContainer" class="message-container" style="display: none;">
+            <div id="messageContent" class="message-content"></div>
+            <button id="closeMessage" class="message-close">&times;</button>
+        </div>
+
+        <main class="main-content">
+            <!-- 对象选择区域 -->
+            <section class="section">
+                <h2>选择对象</h2>
+                <div class="object-selector">
+                    <select id="objectSelect" class="select-input">
+                        <option value="">请选择Salesforce对象...</option>
+                    </select>
+                    <button id="refreshObjects" class="btn btn-secondary">刷新</button>
+                </div>
+                <div class="session-info">
+                    <details>
+                        <summary>高级设置</summary>
+                        <div class="session-input">
+                            <label for="sessionIdInput">Session ID (可选):</label>
+                            <input type="text" id="sessionIdInput" class="input-field" placeholder="手动输入Salesforce Session ID">
+                            <button id="setSessionId" class="btn btn-small">设置</button>
+                        </div>
+                        <div class="session-status">
+                            <span id="sessionStatus">状态: 未检测到</span>
+                        </div>
+                        <div class="session-help">
+                            <p><strong>如何获取Session ID:</strong></p>
+                            <ol>
+                                <li>在Salesforce页面按 <code>F12</code> 打开开发者控制台</li>
+                                <li>在Console中输入: <code>console.log('Session ID:', document.cookie.split(';').find(c => c.trim().startsWith('sid='))?.split('=')[1]);</code></li>
+                                <li>复制输出的Session ID（以00D开头的长字符串）</li>
+                                <li>粘贴到上面的输入框中并点击"设置"</li>
+                            </ol>
+                        </div>
+                    </details>
+                </div>
+            </section>
+
+            <!-- 字段选择区域 -->
+            <section class="section">
+                <h2>选择字段</h2>
+                <div class="field-selector">
+                    <div class="field-controls">
+                        <button id="selectAllFields" class="btn btn-small">全选</button>
+                        <button id="deselectAllFields" class="btn btn-small">取消全选</button>
+                        <button id="selectCommonFields" class="btn btn-small">常用字段</button>
+                    </div>
+                    <div class="field-list" id="fieldList">
+                        <p class="placeholder">请先选择对象</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SOQL生成区域 -->
+            <section class="section">
+                <h2>生成的SOQL</h2>
+                <div class="soql-output">
+                    <textarea id="soqlOutput" class="soql-textarea" readonly placeholder="SOQL查询语句将在这里生成..."></textarea>
+                    <div class="soql-actions">
+                        <button id="copySoql" class="btn btn-primary">复制SOQL</button>
+                        <button id="clearSoql" class="btn btn-secondary">清空</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 查询历史 -->
+            <section class="section">
+                <h2>查询历史</h2>
+                <div class="history-list" id="historyList">
+                    <p class="placeholder">暂无查询历史</p>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>SOQL Creator v1.0.0</p>
+        </footer>
+    </div>
+
+    <script src="sidepanel.js"></script>
+</body>
+</html>
