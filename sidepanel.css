@@ -133,13 +133,61 @@ body {
 
 /* 对象选择器 */
 .object-selector {
-    display: flex;
-    gap: 10px;
-    align-items: center;
     margin-bottom: 15px;
 }
 
-.select-input {
+/* 筛选容器 */
+.filter-container {
+    margin-bottom: 15px;
+    padding: 12px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+.filter-label {
+    font-weight: 500;
+    color: #495057;
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+
+.filter-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.filter-option {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: 13px;
+    color: #495057;
+    transition: color 0.2s;
+}
+
+.filter-option:hover {
+    color: #667eea;
+}
+
+.filter-option input[type="radio"] {
+    margin-right: 6px;
+    accent-color: #667eea;
+}
+
+.filter-option span {
+    user-select: none;
+}
+
+.search-container {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.search-input {
     flex: 1;
     padding: 10px 12px;
     border: 2px solid #e9ecef;
@@ -149,114 +197,207 @@ body {
     transition: border-color 0.2s;
 }
 
-.select-input:focus {
+.search-input:focus {
     outline: none;
     border-color: #667eea;
 }
 
-/* Session信息区域 */
-.session-info {
-    margin-top: 10px;
-}
-
-.session-info details {
-    border: 1px solid #e9ecef;
-    border-radius: 6px;
-    background-color: #f8f9fa;
-}
-
-.session-info summary {
-    padding: 10px 15px;
-    cursor: pointer;
-    font-weight: 500;
-    color: #2c3e50;
-    border-bottom: 1px solid #e9ecef;
-}
-
-.session-info summary:hover {
-    background-color: #e9ecef;
-}
-
-.session-input {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    padding: 15px;
-    flex-wrap: wrap;
-}
-
-.session-input label {
-    font-weight: 500;
-    color: #2c3e50;
-    min-width: 120px;
-}
-
-.input-field {
-    flex: 1;
-    padding: 8px 12px;
+.object-list-container {
     border: 2px solid #e9ecef;
+    border-radius: 6px;
+    background-color: white;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.object-list {
+    padding: 5px;
+}
+
+.object-item {
+    padding: 8px 12px;
+    cursor: pointer;
     border-radius: 4px;
-    font-size: 13px;
-    font-family: monospace;
-    min-width: 200px;
+    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
 }
 
-.input-field:focus {
-    outline: none;
-    border-color: #667eea;
-}
-
-.session-status {
-    padding: 0 15px 15px;
-    font-size: 12px;
-    color: #6c757d;
-}
-
-#sessionStatus {
-    padding: 4px 8px;
-    background-color: #fff3cd;
-    border: 1px solid #ffeaa7;
-    border-radius: 4px;
-    color: #856404;
-}
-
-/* Session帮助信息 */
-.session-help {
-    padding: 15px;
+.object-item:hover {
     background-color: #f8f9fa;
-    border-top: 1px solid #e9ecef;
+}
+
+.object-item.selected {
+    background-color: #e3f2fd;
+    border-left: 3px solid #667eea;
+}
+
+.object-item.hidden {
+    display: none;
+}
+
+.object-name {
+    font-weight: 500;
+    color: #333;
+}
+
+.object-api {
     font-size: 12px;
-    line-height: 1.5;
+    color: #666;
+    font-family: 'Courier New', monospace;
 }
 
-.session-help p {
-    margin-bottom: 10px;
-    color: #2c3e50;
-}
-
-.session-help ol {
-    margin-left: 20px;
-    color: #6c757d;
-}
-
-.session-help li {
-    margin-bottom: 5px;
-}
-
-.session-help code {
-    background-color: #e9ecef;
-    padding: 2px 4px;
-    border-radius: 3px;
-    font-family: monospace;
+.object-description {
     font-size: 11px;
+    color: #888;
+    margin-top: 2px;
 }
+
+.object-type-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 500;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.object-type-badge[data-type="standard"] {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+.object-type-badge[data-type="custom"] {
+    background-color: #f3e5f5;
+    color: #7b1fa2;
+}
+
+.object-type-badge[data-type="metadata"] {
+    background-color: #e8f5e8;
+    color: #388e3c;
+}
+
+.object-type-badge[data-type="system"] {
+    background-color: #fff3e0;
+    color: #f57c00;
+}
+
+.object-info {
+    flex: 1;
+    min-width: 0;
+}
+
+/* 加载状态 */
+.loading-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    gap: 10px;
+    color: #666;
+    font-size: 14px;
+}
+
+.loading-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #e9ecef;
+    border-top: 2px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    font-style: italic;
+}
+
+.placeholder {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+    font-style: italic;
+}
+
 
 /* 字段选择器 */
 .field-controls {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     margin-bottom: 15px;
-    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* 图标按钮样式 */
+.btn-icon {
+    width: 32px;
+    height: 32px;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    background-color: white;
+    color: #6c757d;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.btn-icon:hover {
+    background-color: #f8f9fa;
+    border-color: #667eea;
+    color: #667eea;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.btn-icon:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.btn-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* 字段解析器 */
+.field-parser {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    flex: 1;
+    max-width: 300px;
+}
+
+.field-parser-input {
+    flex: 1;
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: monospace;
+    background-color: white;
+    transition: border-color 0.2s ease;
+}
+
+.field-parser-input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.field-parser-input::placeholder {
+    color: #adb5bd;
+    font-size: 11px;
 }
 
 .field-list {
@@ -288,6 +429,23 @@ body {
     cursor: pointer;
     flex: 1;
     font-size: 13px;
+}
+
+.field-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.field-name {
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+.field-details {
+    font-size: 11px;
+    color: #6c757d;
+    font-style: italic;
 }
 
 .placeholder {
@@ -438,9 +596,6 @@ body {
         padding: 15px;
     }
     
-    .field-controls {
-        flex-direction: column;
-    }
     
     .soql-actions {
         flex-direction: column;

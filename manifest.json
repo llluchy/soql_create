@@ -23,11 +23,15 @@
     "storage",
     "sidePanel",
     "scripting",
-    "tabs"
+    "tabs",
+    "cookies"
   ],
   "host_permissions": [
     "https://*.salesforce.com/*",
+    "https://*.salesforce-setup.com/*",
     "https://*.force.com/*",
+    "https://*.cloudforce.com/*",
+    "https://*.visualforce.com/*",
     "https://*.lightning.force.com/*"
   ],
   "side_panel": {

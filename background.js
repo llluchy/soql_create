@@ -1,4 +1,4 @@
-// SOQL Creator 后台脚本 - 基于官方文档实现
+// SOQL Creator 后台脚本 - 基于 Salesforce Inspector Reloaded 最佳实践
 class SOQLCreatorBackground {
     constructor() {
         this.init();
@@ -16,6 +16,12 @@ class SOQLCreatorBackground {
             this.toggleSidePanel(tab.id);
         });
 
+        // 键盘快捷键支持
+        chrome.commands?.onCommand.addListener((command) => {
+            console.log('SOQL Creator: 快捷键触发:', command);
+            this.handleCommand(command);
+        });
+
         // 监听来自侧边栏的消息
         chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.log('SOQL Creator 后台脚本收到消息:', message);
@@ -23,6 +29,28 @@ class SOQLCreatorBackground {
             if (message.type === 'GET_CURRENT_DOMAIN') {
                 this.handleGetCurrentDomain(sender, sendResponse);
                 return true; // 保持消息通道开放
+            }
+            
+            // 处理获取Salesforce主机请求 - 基于 Salesforce Inspector Reloaded
+            if (message.message === "getSfHost") {
+                this.handleGetSfHost(message, sender, sendResponse);
+                return true; // 异步响应
+            }
+            
+            // 处理会话获取请求 - 基于 Salesforce Inspector Reloaded
+            if (message.message === "getSession") {
+                this.handleGetSession(message, sender, sendResponse);
+                return true; // 异步响应
+            }
+            
+            // 处理OAuth重定向
+            if (message.message === "createWindow") {
+                this.handleCreateWindow(message);
+            }
+            
+            // 处理页面重载
+            if (message.message === "reloadPage") {
+                this.handleReloadPage();
             }
         });
 
@@ -144,6 +172,170 @@ class SOQLCreatorBackground {
         return isSalesforceDomain;
     }
 
+    // 处理获取Salesforce主机请求 - 基于 Salesforce Inspector Reloaded
+    async handleGetSfHost(message, sender, sendResponse) {
+        try {
+            const currentDomain = new URL(message.url).hostname;
+            console.log('SOQL Creator: 获取Salesforce主机，当前域名:', currentDomain);
+            
+            // 当在 *.visual.force.com 页面时，cookie中的会话没有API访问权限，
+            // 所以我们需要从对应的 *.salesforce.com 页面读取会话。
+            // 会话cookie的第一部分是OrgID，我们用它作为键来支持同时登录多个组织。
+            const cookieStoreId = sender.tab?.cookieStoreId;
+            console.log('SOQL Creator: getSfHost Cookie Store ID:', cookieStoreId);
+            
+            chrome.cookies.get({
+                url: message.url, 
+                name: "sid", 
+                storeId: cookieStoreId
+            }, cookie => {
+                if (!cookie || currentDomain.endsWith(".mcas.ms")) { // Microsoft Defender for Cloud Apps使用的域名，sid存在但无法读取
+                    console.log('SOQL Creator: 未找到会话cookie或Microsoft Defender域名，返回当前域名');
+                    sendResponse(currentDomain);
+                    return;
+                }
+                
+                const [orgId] = cookie.value.split("!");
+                const orderedDomains = ["salesforce.com", "cloudforce.com", "salesforce.mil", "cloudforce.mil", "sfcrmproducts.cn", "force.com"];
+                
+                let found = false;
+                orderedDomains.forEach(domain => {
+                    if (found) return;
+                    
+                    chrome.cookies.getAll({
+                        name: "sid", 
+                        domain: domain, 
+                        secure: true, 
+                        storeId: cookieStoreId
+                    }, cookies => {
+                        if (found) return;
+                        
+                        let sessionCookie = cookies.find(c => 
+                            c.value.startsWith(orgId + "!") && 
+                            c.domain !== "help.salesforce.com"
+                        );
+                        
+                        if (sessionCookie) {
+                            console.log('SOQL Creator: 找到匹配的会话cookie，域名:', sessionCookie.domain);
+                            found = true;
+                            sendResponse(sessionCookie.domain);
+                        }
+                    });
+                });
+                
+                // 如果没有找到匹配的cookie，返回当前域名
+                setTimeout(() => {
+                    if (!found) {
+                        console.log('SOQL Creator: 未找到匹配的会话cookie，返回当前域名');
+                        sendResponse(currentDomain);
+                    }
+                }, 1000);
+            });
+            
+        } catch (error) {
+            console.error('SOQL Creator: 获取Salesforce主机失败:', error);
+            sendResponse(message.url ? new URL(message.url).hostname : null);
+        }
+    }
+
+    // 处理会话获取请求 - 基于 Salesforce Inspector Reloaded
+    async handleGetSession(message, sender, sendResponse) {
+        try {
+            const sfHost = message.sfHost;
+            console.log('SOQL Creator: 获取会话，主机:', sfHost);
+            
+            // 获取cookieStoreId，如果sender.tab不存在则使用undefined（默认cookie store）
+            const cookieStoreId = sender.tab?.cookieStoreId;
+            console.log('SOQL Creator: Cookie Store ID:', cookieStoreId);
+            
+            // 从浏览器cookie获取Salesforce会话
+            const sessionCookie = await chrome.cookies.get({
+                url: "https://" + sfHost,
+                name: "sid",
+                storeId: cookieStoreId
+            });
+            
+            if (!sessionCookie) {
+                console.log('SOQL Creator: 未找到会话cookie');
+                sendResponse(null);
+                return;
+            }
+            
+            // 返回会话信息
+            const session = {
+                key: sessionCookie.value,
+                hostname: sessionCookie.domain
+            };
+            
+            console.log('SOQL Creator: 成功获取会话');
+            sendResponse(session);
+            
+        } catch (error) {
+            console.error('SOQL Creator: 获取会话失败:', error);
+            sendResponse(null);
+        }
+    }
+
+    // 处理OAuth重定向
+    handleCreateWindow(message) {
+        chrome.windows.create({
+            url: message.url,
+            incognito: message.incognito ?? false
+        });
+    }
+
+    // 处理页面重载
+    handleReloadPage() {
+        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+            if (tabs[0]) {
+                chrome.tabs.reload(tabs[0].id);
+                console.log('SOQL Creator: 页面已重载');
+            }
+        });
+    }
+
+    // 处理键盘快捷键命令
+    handleCommand(command) {
+        if (command.startsWith("link-")) {
+            let link;
+            switch (command) {
+                case "link-setup":
+                    link = "/lightning/setup/SetupOneHome/home";
+                    break;
+                case "link-home":
+                    link = "/";
+                    break;
+                case "link-dev":
+                    link = "/_ui/common/apex/debug/ApexCSIPage";
+                    break;
+                default:
+                    return;
+            }
+            
+            chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+                if (tabs[0] && tabs[0].url) {
+                    const url = new URL(tabs[0].url);
+                    if (this.isSalesforceOrigin(url.origin)) {
+                        chrome.tabs.create({
+                            url: `https://${url.hostname}${link}`
+                        });
+                    }
+                }
+            });
+        } else if (command.startsWith("open-")) {
+            // 发送消息到侧边栏处理
+            chrome.runtime.sendMessage({
+                msg: "shortcut_pressed", 
+                command: command
+            });
+        } else {
+            // 打开扩展页面
+            chrome.tabs.create({
+                url: `chrome-extension://${chrome.runtime.id}/${command}.html`
+            });
+        }
+    }
+
     // 处理获取当前域名的消息
     async handleGetCurrentDomain(sender, sendResponse) {
         try {
@@ -171,10 +363,17 @@ new SOQLCreatorBackground();
 chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === 'install') {
         console.log('SOQL Creator 插件已安装');
+        // 打开欢迎页面
+        chrome.tabs.create({
+            url: "https://github.com/your-username/soql-creator" // 替换为实际的欢迎页面URL
+        });
     } else if (details.reason === 'update') {
         console.log('SOQL Creator 插件已更新到版本:', chrome.runtime.getManifest().version);
     }
 });
+
+// 设置卸载URL
+chrome.runtime.setUninstallURL("https://forms.gle/your-feedback-form"); // 替换为实际的反馈表单URL
 
 // 插件启动事件
 chrome.runtime.onStartup.addListener(() => {

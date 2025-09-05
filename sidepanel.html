@@ -24,32 +24,42 @@
             <section class="section">
                 <h2>选择对象</h2>
                 <div class="object-selector">
-                    <select id="objectSelect" class="select-input">
-                        <option value="">请选择Salesforce对象...</option>
-                    </select>
-                    <button id="refreshObjects" class="btn btn-secondary">刷新</button>
-                </div>
-                <div class="session-info">
-                    <details>
-                        <summary>高级设置</summary>
-                        <div class="session-input">
-                            <label for="sessionIdInput">Session ID (可选):</label>
-                            <input type="text" id="sessionIdInput" class="input-field" placeholder="手动输入Salesforce Session ID">
-                            <button id="setSessionId" class="btn btn-small">设置</button>
+                    <!-- 对象类型筛选 -->
+                    <div class="filter-container">
+                        <div class="filter-label">对象类型:</div>
+                        <div class="filter-options">
+                            <label class="filter-option">
+                                <input type="radio" name="objectType" value="standard" checked>
+                                <span>标准对象</span>
+                            </label>
+                            <label class="filter-option">
+                                <input type="radio" name="objectType" value="custom">
+                                <span>自定义对象</span>
+                            </label>
+                            <label class="filter-option">
+                                <input type="radio" name="objectType" value="metadata">
+                                <span>元数据对象</span>
+                            </label>
+                            <label class="filter-option">
+                                <input type="radio" name="objectType" value="system">
+                                <span>系统对象</span>
+                            </label>
                         </div>
-                        <div class="session-status">
-                            <span id="sessionStatus">状态: 未检测到</span>
+                    </div>
+                    
+                    <div class="search-container">
+                        <input type="text" id="objectSearch" class="search-input" placeholder="搜索对象 (支持Label和API名)...">
+                        <button id="refreshObjects" class="btn btn-secondary">刷新</button>
+                    </div>
+                    <div class="object-list-container">
+                        <div id="objectList" class="object-list">
+                            <div class="placeholder">请先加载对象列表...</div>
                         </div>
-                        <div class="session-help">
-                            <p><strong>如何获取Session ID:</strong></p>
-                            <ol>
-                                <li>在Salesforce页面按 <code>F12</code> 打开开发者控制台</li>
-                                <li>在Console中输入: <code>console.log('Session ID:', document.cookie.split(';').find(c => c.trim().startsWith('sid='))?.split('=')[1]);</code></li>
-                                <li>复制输出的Session ID（以00D开头的长字符串）</li>
-                                <li>粘贴到上面的输入框中并点击"设置"</li>
-                            </ol>
+                        <div id="loadingStatus" class="loading-status" style="display: none;">
+                            <div class="loading-spinner"></div>
+                            <span class="loading-text">正在加载对象数据...</span>
                         </div>
-                    </details>
+                    </div>
                 </div>
             </section>
 
@@ -58,9 +68,36 @@
                 <h2>选择字段</h2>
                 <div class="field-selector">
                     <div class="field-controls">
-                        <button id="selectAllFields" class="btn btn-small">全选</button>
-                        <button id="deselectAllFields" class="btn btn-small">取消全选</button>
-                        <button id="selectCommonFields" class="btn btn-small">常用字段</button>
+                        <button id="selectAllFields" class="btn-icon" title="全选字段">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="9,11 12,14 22,4"></polyline>
+                                <path d="M21,12v7a2,2 0 0,1 -2,2H5a2,2 0 0,1 -2,-2V5a2,2 0 0,1 2,-2h11"></path>
+                            </svg>
+                        </button>
+                        <button id="deselectAllFields" class="btn-icon" title="取消全选">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                            </svg>
+                        </button>
+                        <button id="selectCommonFields" class="btn-icon" title="选择常用字段">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9,11H15L13.5,9.5L15,8H9L10.5,9.5L9,11Z"></path>
+                                <path d="M9,13H15L13.5,14.5L15,16H9L10.5,14.5L9,13Z"></path>
+                                <path d="M9,15H15L13.5,16.5L15,18H9L10.5,16.5L9,15Z"></path>
+                            </svg>
+                        </button>
+                        <div class="field-parser">
+                            <input type="text" id="fieldParserInput" class="field-parser-input" placeholder="粘贴字段列表，如：field1,field2,field3">
+                            <button id="parseFields" class="btn-icon" title="解析并选择字段">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2Z"></path>
+                                    <polyline points="14,2 14,8 20,8"></polyline>
+                                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                                    <polyline points="10,9 9,9 8,9"></polyline>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                     <div class="field-list" id="fieldList">
                         <p class="placeholder">请先选择对象</p>
@@ -94,6 +131,7 @@
         </footer>
     </div>
 
+    <script src="salesforce-api.js"></script>
     <script src="sidepanel.js"></script>
 </body>
 </html>
