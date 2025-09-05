@@ -4,8 +4,13 @@ class SOQLCreator {
         this.currentObject = null;
         this.selectedFields = new Set();
         this.objects = [];
+        this.allObjects = []; // 备份所有对象，用于筛选
         this.fields = {};
         this.sfHost = null;
+        
+        // 使用常量类中的标准对象白名单
+        this.standardObjectWhitelist = SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST;
+        
         this.init();
     }
 
@@ -65,8 +70,9 @@ class SOQLCreator {
             this.copySOQL();
         });
 
-        document.getElementById('clearSoql').addEventListener('click', () => {
-            this.clearSOQL();
+        // 设置按钮
+        document.getElementById('settingsBtn').addEventListener('click', () => {
+            this.openSettings();
         });
     }
 
@@ -101,14 +107,14 @@ class SOQLCreator {
     async loadObjects() {
         try {
             // 显示加载状态
-            this.showLoadingStatus('正在加载对象列表...');
+            this.showLoadingStatus('正在加载对象列表...', 'objectList');
             this.showMessage('正在加载对象列表...');
             
             // 获取会话
             await sfConn.getSession(this.sfHost);
             
             if (!sfConn.sessionId) {
-                this.hideLoadingStatus();
+                this.hideLoadingStatus(document.getElementById('objectList'));
                 this.showMessage('无法获取Salesforce会话，请检查登录状态', 'error');
                 return;
             }
@@ -118,7 +124,7 @@ class SOQLCreator {
             
             if (result && result.sobjects && result.sobjects.length > 0) {
                 // 过滤出可查询的对象，并按名称排序
-                this.objects = result.sobjects
+                this.allObjects = result.sobjects
                     .filter(obj => obj.queryable === true && obj.retrieveable === true)
                     .sort((a, b) => a.label.localeCompare(b.label))
                     .map(obj => ({
@@ -131,19 +137,24 @@ class SOQLCreator {
                         deletable: obj.deletable || false
                     }));
                 
-                this.hideLoadingStatus();
+                // 初始化时显示所有对象
+                this.objects = [...this.allObjects];
+                
+                this.hideLoadingStatus(document.getElementById('objectList'));
                 this.populateObjectList();
-                this.showMessage(`成功加载 ${this.objects.length} 个对象`, 'success');
+                this.showMessage(`成功加载 ${this.allObjects.length} 个对象`, 'success');
             } else {
-                this.hideLoadingStatus();
+                this.hideLoadingStatus(document.getElementById('objectList'));
                 this.showMessage('无法获取对象列表，请检查权限', 'error');
+                this.allObjects = [];
                 this.objects = [];
                 this.populateObjectList();
             }
         } catch (error) {
             console.error('SOQL Creator: 加载对象失败:', error);
-            this.hideLoadingStatus();
+            this.hideLoadingStatus(document.getElementById('objectList'));
             ErrorHandler.handle(error, 'loadObjects');
+            this.allObjects = [];
             this.objects = [];
             this.populateObjectList();
         }
@@ -152,7 +163,7 @@ class SOQLCreator {
     // 加载对象字段
     async loadFields(objectApiName) {
         try {
-            this.showLoadingStatus('正在加载字段列表...');
+            this.showLoadingStatus('正在加载字段列表...', 'fieldList');
             this.showMessage('正在加载字段列表...');
             
             // 使用新的API模块获取字段列表
@@ -204,18 +215,18 @@ class SOQLCreator {
                 });
                 
                 this.fields[objectApiName] = fieldsMap;
-                this.hideLoadingStatus();
+                this.hideLoadingStatus(document.getElementById('fieldList'));
                 this.populateFieldList();
                 this.showMessage(`成功加载 ${Object.keys(fieldsMap).length} 个字段`, 'success');
             } else {
-                this.hideLoadingStatus();
+                this.hideLoadingStatus(document.getElementById('fieldList'));
                 this.showMessage('无法获取字段列表，请检查权限', 'error');
                 this.fields[objectApiName] = {};
                 this.populateFieldList();
             }
         } catch (error) {
             console.error('SOQL Creator: 加载字段失败:', error);
-            this.hideLoadingStatus();
+            this.hideLoadingStatus(document.getElementById('fieldList'));
             ErrorHandler.handle(error, 'loadFields');
             this.fields[objectApiName] = {};
             this.populateFieldList();
@@ -230,8 +241,8 @@ class SOQLCreator {
     populateObjectList() {
         const objectList = document.getElementById('objectList');
         
-        if (this.objects.length === 0) {
-            objectList.innerHTML = '<div class="placeholder">暂无可用对象，请检查Session ID</div>';
+        if (this.allObjects.length === 0) {
+            objectList.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">暂无可用对象</div><div class="empty-description">请检查Session ID或网络连接</div></div>';
             return;
         }
         
@@ -239,24 +250,69 @@ class SOQLCreator {
         objectList.innerHTML = '';
         
         // 过滤掉Share对象，然后按标签名称排序
-        const filteredObjects = this.objects.filter(obj => {
+        const filteredObjects = this.allObjects.filter(obj => {
             const objectType = this.getObjectType(obj);
-            return objectType !== 'share'; // 过滤掉Share对象
+            
+            // 过滤掉Share对象
+            if (objectType === 'share') {
+                return false;
+            }
+            
+            // 对于业务对象（包含标准对象和自定义对象），根据设置决定是否启用白名单筛选
+            if (objectType === 'business') {
+                const enableFilter = localStorage.getItem('enableStandardObjectFilter') !== 'false';
+                if (enableFilter) {
+                    // 标准对象需要检查白名单
+                    if (obj.name.endsWith('__c')) {
+                        // 自定义对象不做限制
+                        return true;
+                    } else {
+                        // 标准对象必须在白名单中
+                        return SOQL_CONSTANTS.isStandardObjectInWhitelist(obj.name);
+                    }
+                }
+                // 如果禁用筛选，显示所有业务对象
+                return true;
+            }
+            
+            // 其他类型的对象（自定义、元数据、系统）都显示
+            return true;
         });
         
         const sortedObjects = [...filteredObjects].sort((a, b) => a.label.localeCompare(b.label));
         
         // 打印所有对象到控制台
         console.log('=== SOQL Creator: 所有对象列表 ===');
-        console.log('原始对象数量:', this.objects.length);
+        console.log('原始对象数量:', this.allObjects.length);
         console.log('过滤后对象数量:', sortedObjects.length);
-        console.log('已过滤掉Share对象');
+        
+        const enableFilter = localStorage.getItem('enableStandardObjectFilter') !== 'false';
+        if (enableFilter) {
+            console.log('已过滤掉Share对象和不在白名单中的标准对象');
+            console.log('业务对象白名单筛选: 启用（标准对象需在白名单中，自定义对象无限制）');
+        } else {
+            console.log('已过滤掉Share对象');
+            console.log('业务对象白名单筛选: 禁用');
+        }
+        
+        // 统计各类型对象数量
+        const typeCounts = {};
+        sortedObjects.forEach(obj => {
+            const objectType = this.getObjectType(obj);
+            typeCounts[objectType] = (typeCounts[objectType] || 0) + 1;
+        });
+        console.log('对象类型统计:', typeCounts);
+        
         console.log('对象详情:');
         sortedObjects.forEach((obj, index) => {
             const objectType = this.getObjectType(obj);
-            console.log(`${index + 1}. [${objectType}] ${obj.label} (${obj.name})`);
         });
         console.log('=== 对象列表结束 ===');
+
+        if (sortedObjects.length === 0) {
+            objectList.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">没有找到匹配的对象</div><div class="empty-description">请尝试调整筛选条件或搜索关键词</div></div>';
+            return;
+        }
 
         sortedObjects.forEach(obj => {
             const objectItem = document.createElement('div');
@@ -321,7 +377,7 @@ class SOQLCreator {
             return;
         }
 
-        this.currentObject = this.objects.find(obj => obj.apiName === objectApiName);
+        this.currentObject = this.allObjects.find(obj => obj.apiName === objectApiName);
         await this.loadFields(objectApiName);
     }
 
@@ -336,7 +392,7 @@ class SOQLCreator {
         
         // 自定义对象 (以__c结尾)
         if (apiName.endsWith('__c')) {
-            return 'custom';
+            return 'business'; // 业务对象（包含标准对象和自定义对象）
         }
         
         // 元数据对象 (以__mdt结尾)
@@ -349,15 +405,14 @@ class SOQLCreator {
             return 'system';
         }
         
-        // 标准对象 (其他所有对象)
-        return 'standard';
+        // 标准对象 (其他所有对象) - 现在归类为业务对象
+        return 'business';
     }
 
     // 获取对象类型标签
     getObjectTypeLabel(type) {
         const typeLabels = {
-            'standard': '标准',
-            'custom': '自定义',
+            'business': '业务对象',
             'metadata': '元数据',
             'system': '系统'
         };
@@ -366,37 +421,108 @@ class SOQLCreator {
 
     // 过滤对象列表
     filterObjects() {
-        const objectItems = document.querySelectorAll('.object-item');
+        const objectList = document.getElementById('objectList');
         const searchTerm = document.getElementById('objectSearch').value.toLowerCase().trim();
         const selectedType = document.querySelector('input[name="objectType"]:checked').value;
         
-        objectItems.forEach(item => {
-            const apiName = item.dataset.apiName;
-            const object = this.objects.find(obj => obj.apiName === apiName);
+        // 如果没有备份数据，直接返回
+        if (this.allObjects.length === 0) {
+            objectList.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">暂无可用对象</div><div class="empty-description">请检查Session ID或网络连接</div></div>';
+            return;
+        }
+        
+        // 清空列表
+        objectList.innerHTML = '';
+        
+        // 从备份数据中筛选对象
+        let filteredObjects = this.allObjects.filter(obj => {
+            const objectType = this.getObjectType(obj);
             
-            if (!object) {
-                item.classList.add('hidden');
-                return;
+            // 过滤掉Share对象
+            if (objectType === 'share') {
+                return false;
             }
             
-            // 类型筛选
-            const objectType = this.getObjectType(object);
-            const typeMatch = objectType === selectedType;
-            
-            // 搜索筛选
-            let searchMatch = true;
-            if (searchTerm) {
-                const labelMatch = object.label.toLowerCase().includes(searchTerm);
-                const apiMatch = object.name.toLowerCase().includes(searchTerm);
-                searchMatch = labelMatch || apiMatch;
+            // 对于业务对象（包含标准对象和自定义对象），根据设置决定是否启用白名单筛选
+            if (objectType === 'business') {
+                const enableFilter = localStorage.getItem('enableStandardObjectFilter') !== 'false';
+                if (enableFilter) {
+                    // 标准对象需要检查白名单
+                    if (obj.name.endsWith('__c')) {
+                        // 自定义对象不做限制
+                        return true;
+                    } else {
+                        // 标准对象必须在白名单中
+                        return SOQL_CONSTANTS.isStandardObjectInWhitelist(obj.name);
+                    }
+                }
+                // 如果禁用筛选，显示所有业务对象
+                return true;
             }
             
-            // 同时满足类型和搜索条件才显示
-            if (typeMatch && searchMatch) {
-                item.classList.remove('hidden');
-            } else {
-                item.classList.add('hidden');
+            // 其他类型的对象（自定义、元数据、系统）都显示
+            return true;
+        });
+        
+        // 应用类型筛选
+        filteredObjects = filteredObjects.filter(obj => {
+            const objectType = this.getObjectType(obj);
+            return objectType === selectedType;
+        });
+        
+        // 应用搜索筛选
+        if (searchTerm) {
+            filteredObjects = filteredObjects.filter(obj => {
+                const labelMatch = obj.label.toLowerCase().includes(searchTerm);
+                const apiMatch = obj.name.toLowerCase().includes(searchTerm);
+                return labelMatch || apiMatch;
+            });
+        }
+        
+        // 按标签名称排序
+        filteredObjects.sort((a, b) => a.label.localeCompare(b.label));
+        
+        // 如果没有匹配的对象，显示空状态提示
+        if (filteredObjects.length === 0) {
+            objectList.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">没有找到匹配的对象</div><div class="empty-description">请尝试调整筛选条件或搜索关键词</div></div>';
+            return;
+        }
+        
+        // 重新渲染对象列表
+        filteredObjects.forEach(obj => {
+            const objectItem = document.createElement('div');
+            objectItem.className = 'object-item';
+            objectItem.dataset.apiName = obj.apiName;
+            objectItem.dataset.objectType = this.getObjectType(obj);
+            
+            const objectInfo = document.createElement('div');
+            objectInfo.className = 'object-info';
+            
+            const objectName = document.createElement('div');
+            objectName.className = 'object-name';
+            objectName.textContent = obj.label;
+            
+            const objectApi = document.createElement('div');
+            objectApi.className = 'object-api';
+            objectApi.textContent = obj.name;
+            
+            // 添加对象描述（如果有的话）
+            if (obj.label !== obj.name) {
+                const objectDescription = document.createElement('div');
+                objectDescription.className = 'object-description';
+                objectInfo.appendChild(objectDescription);
             }
+            
+            objectInfo.appendChild(objectName);
+            objectInfo.appendChild(objectApi);
+            objectItem.appendChild(objectInfo);
+            
+            // 添加点击事件
+            objectItem.addEventListener('click', () => {
+                this.selectObject(obj.apiName);
+            });
+            
+            objectList.appendChild(objectItem);
         });
     }
 
@@ -407,14 +533,14 @@ class SOQLCreator {
         fieldList.innerHTML = '';
 
         if (!this.currentObject || !this.fields[this.currentObject.apiName]) {
-            fieldList.innerHTML = '<p class="placeholder">请先选择对象</p>';
+            fieldList.innerHTML = '<div class="empty-state"><div class="empty-icon">📝</div><div class="empty-title">请先选择对象</div><div class="empty-description">选择一个对象以查看其字段列表</div></div>';
             return;
         }
 
         const fields = this.fields[this.currentObject.apiName];
         
         if (Object.keys(fields).length === 0) {
-            fieldList.innerHTML = '<p class="placeholder">无法获取字段列表，请检查Session ID或重新选择对象</p>';
+            fieldList.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">无法获取字段列表</div><div class="empty-description">请检查Session ID或重新选择对象</div></div>';
             return;
         }
 
@@ -461,7 +587,7 @@ class SOQLCreator {
     // 清空字段列表
     clearFieldList() {
         const fieldList = document.getElementById('fieldList');
-        fieldList.innerHTML = '<p class="placeholder">请先选择对象</p>';
+        fieldList.innerHTML = '<div class="empty-state"><div class="empty-icon">📝</div><div class="empty-title">请先选择对象</div><div class="empty-description">选择一个对象以查看其字段列表</div></div>';
     }
 
     // 字段选择变化处理
@@ -549,12 +675,6 @@ class SOQLCreator {
         }
     }
 
-    // 清空SOQL
-    clearSOQL() {
-        document.getElementById('soqlOutput').value = '';
-        this.showMessage('SOQL已清空');
-    }
-
     // 保存到历史记录
     saveToHistory(soql) {
         if (!soql.trim()) return;
@@ -600,7 +720,7 @@ class SOQLCreator {
         const history = this.getHistory();
 
         if (history.length === 0) {
-            historyList.innerHTML = '<p class="placeholder">暂无查询历史</p>';
+            historyList.innerHTML = '<div class="empty-state"><div class="empty-icon">📚</div><div class="empty-title">暂无查询历史</div><div class="empty-description">生成的SOQL查询将保存在这里</div></div>';
             return;
         }
 
@@ -673,20 +793,38 @@ class SOQLCreator {
     // 设置手动输入的Session ID
 
     // 显示加载状态
-    showLoadingStatus(message = '正在加载...') {
-        const loadingStatus = document.getElementById('loadingStatus');
-        const loadingText = loadingStatus.querySelector('.loading-text');
-        if (loadingStatus && loadingText) {
-            loadingText.textContent = message;
-            loadingStatus.style.display = 'flex';
-        }
+    showLoadingStatus(message = '正在加载...', containerId = null) {
+        // 如果没有指定容器，默认使用对象列表容器
+        const container = containerId ? document.getElementById(containerId) : document.querySelector('.object-list-container');
+        
+        if (!container) return;
+        
+        // 移除现有的加载覆盖层
+        this.hideLoadingStatus(container);
+        
+        // 创建加载覆盖层
+        const loadingOverlay = document.createElement('div');
+        loadingOverlay.className = 'loading-overlay';
+        loadingOverlay.innerHTML = `
+            <div class="loading-spinner"></div>
+            <span class="loading-text">${message}</span>
+        `;
+        
+        container.appendChild(loadingOverlay);
     }
 
     // 隐藏加载状态
-    hideLoadingStatus() {
-        const loadingStatus = document.getElementById('loadingStatus');
-        if (loadingStatus) {
-            loadingStatus.style.display = 'none';
+    hideLoadingStatus(container = null) {
+        // 如果没有指定容器，查找所有加载覆盖层
+        if (container) {
+            const loadingOverlay = container.querySelector('.loading-overlay');
+            if (loadingOverlay) {
+                loadingOverlay.remove();
+            }
+        } else {
+            // 移除所有加载覆盖层
+            const loadingOverlays = document.querySelectorAll('.loading-overlay');
+            loadingOverlays.forEach(overlay => overlay.remove());
         }
     }
 
@@ -838,6 +976,62 @@ class SOQLCreator {
         this.generateSOQL();
     }
 
+    // 打开设置面板
+    openSettings() {
+        // 创建设置模态框
+        const modal = document.createElement('div');
+        modal.className = 'settings-modal';
+        modal.innerHTML = `
+            <div class="settings-overlay">
+                <div class="settings-panel">
+                    <div class="settings-header">
+                        <h3>设置</h3>
+                        <button class="settings-close">&times;</button>
+                    </div>
+                    <div class="settings-content">
+                        <div class="settings-section">
+                            <h4>侧边栏设置</h4>
+                            <div class="setting-item">
+                                <div class="setting-description">
+                                    侧边栏位置可在Chrome浏览器设置中调整：<br>
+                                    设置 → 外观 → 侧边栏位置
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // 绑定设置面板事件
+        this.bindSettingsEvents(modal);
+
+        // 加载保存的设置
+        this.loadSettings(modal);
+    }
+
+    // 绑定设置面板事件
+    bindSettingsEvents(modal) {
+        // 关闭按钮
+        modal.querySelector('.settings-close').addEventListener('click', () => {
+            document.body.removeChild(modal);
+        });
+
+        // 点击遮罩层关闭
+        modal.querySelector('.settings-overlay').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) {
+                document.body.removeChild(modal);
+            }
+        });
+
+    }
+
+    // 加载设置
+    async loadSettings(modal) {
+        // 当前没有需要加载的设置
+    }
 
 }
 

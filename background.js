@@ -1,4 +1,29 @@
 // SOQL Creator 后台脚本 - 基于 Salesforce Inspector Reloaded 最佳实践
+
+// 允许启用侧边栏的网站域名列表
+// 注意：此数组需要与 constants.js 中的 ALLOWED_ORIGINS 保持同步
+const ALLOWED_ORIGINS = [
+    'https://login.salesforce.com',
+    'https://test.salesforce.com',
+    'https://na1.salesforce.com',
+    'https://na2.salesforce.com',
+    'https://eu1.salesforce.com',
+    'https://eu2.salesforce.com',
+    'https://ap1.salesforce.com',
+    'https://ap2.salesforce.com'
+];
+
+// 检查域名是否在允许列表中
+function isAllowedOrigin(origin) {
+    console.log('当前域名:', origin);
+    return ALLOWED_ORIGINS.some(allowedOrigin => 
+        origin === allowedOrigin || 
+        origin.endsWith('.salesforce.com') ||
+        origin.endsWith('.force.com') ||
+        origin.endsWith('.lightning.force.com')
+    );
+}
+
 class SOQLCreatorBackground {
     constructor() {
         this.init();
@@ -31,6 +56,7 @@ class SOQLCreatorBackground {
                 return true; // 保持消息通道开放
             }
             
+            
             // 处理获取Salesforce主机请求 - 基于 Salesforce Inspector Reloaded
             if (message.message === "getSfHost") {
                 this.handleGetSfHost(message, sender, sendResponse);
@@ -61,17 +87,17 @@ class SOQLCreatorBackground {
             const url = new URL(tab.url);
             console.log('SOQL Creator: 标签页更新，URL:', url.origin);
             
-            // 检查是否为Salesforce网站
+            // 检查是否为允许的网站
             if (this.isSalesforceOrigin(url.origin)) {
-                console.log('SOQL Creator: 检测到Salesforce网站，启用侧边栏');
-                // 在Salesforce网站启用侧边栏
+                console.log('SOQL Creator: 检测到允许的网站，启用侧边栏');
+                // 在允许的网站启用侧边栏
                 await chrome.sidePanel.setOptions({
                     tabId,
                     path: 'sidepanel.html',
                     enabled: true
                 });
             } else {
-                console.log('SOQL Creator: 非Salesforce网站，禁用侧边栏');
+                console.log('SOQL Creator: 非允许网站，禁用侧边栏');
                 // 在其他网站禁用侧边栏
                 await chrome.sidePanel.setOptions({
                     tabId,
@@ -87,14 +113,14 @@ class SOQLCreatorBackground {
                 if (tab.url) {
                     const url = new URL(tab.url);
                     if (this.isSalesforceOrigin(url.origin)) {
-                        console.log('SOQL Creator: 切换到Salesforce网站，启用侧边栏');
+                        console.log('SOQL Creator: 切换到允许的网站，启用侧边栏');
                         await chrome.sidePanel.setOptions({
                             tabId: activeInfo.tabId,
                             path: 'sidepanel.html',
                             enabled: true
                         });
                     } else {
-                        console.log('SOQL Creator: 切换到非Salesforce网站，禁用侧边栏');
+                        console.log('SOQL Creator: 切换到非允许网站，禁用侧边栏');
                         await chrome.sidePanel.setOptions({
                             tabId: activeInfo.tabId,
                             enabled: false
@@ -146,28 +172,9 @@ class SOQLCreatorBackground {
         }
     }
 
-    // 判断是否为Salesforce网站（使用origin比较）
+    // 判断是否为Salesforce网站
     isSalesforceOrigin(origin) {
-        // 定义Salesforce相关的域名
-        const salesforceOrigins = [
-            'https://login.salesforce.com',
-            'https://test.salesforce.com',
-            'https://na1.salesforce.com',
-            'https://na2.salesforce.com',
-            'https://eu1.salesforce.com',
-            'https://eu2.salesforce.com',
-            'https://ap1.salesforce.com',
-            'https://ap2.salesforce.com'
-        ];
-        
-        // 检查是否匹配Salesforce域名模式
-        const isSalesforceDomain = salesforceOrigins.some(salesforceOrigin => 
-            origin === salesforceOrigin || 
-            origin.endsWith('.salesforce.com') ||
-            origin.endsWith('.force.com') ||
-            origin.endsWith('.lightning.force.com')
-        );
-        
+        const isSalesforceDomain = isAllowedOrigin(origin);
         console.log('SOQL Creator: 检查域名:', origin, '是否为Salesforce:', isSalesforceDomain);
         return isSalesforceDomain;
     }
@@ -354,15 +361,21 @@ class SOQLCreatorBackground {
             sendResponse({ success: false, domain: null });
         }
     }
+
 }
 
 // 初始化后台脚本
 new SOQLCreatorBackground();
 
 // 插件安装/更新事件
-chrome.runtime.onInstalled.addListener((details) => {
+chrome.runtime.onInstalled.addListener(async (details) => {
     if (details.reason === 'install') {
         console.log('SOQL Creator 插件已安装');
+        
+        // 设置默认侧边栏行为
+        await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+        console.log('SOQL Creator: 默认侧边栏行为已设置');
+        
         // 打开欢迎页面
         chrome.tabs.create({
             url: "https://github.com/your-username/soql-creator" // 替换为实际的欢迎页面URL
