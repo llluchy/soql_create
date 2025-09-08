@@ -80,55 +80,84 @@ class SOQLCreatorBackground {
             }
         });
 
-        // 标签页更新事件 - 根据官方文档实现
-        chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
-            if (!tab.url) return;
-            
-            const url = new URL(tab.url);
-            console.log('SOQL Creator: 标签页更新，URL:', url.origin);
-            
-            // 检查是否为允许的网站
-            if (this.isSalesforceOrigin(url.origin)) {
-                console.log('SOQL Creator: 检测到允许的网站，启用侧边栏');
-                // 在允许的网站启用侧边栏
-                await chrome.sidePanel.setOptions({
-                    tabId,
-                    path: 'sidepanel.html',
-                    enabled: true
-                });
-            } else {
-                console.log('SOQL Creator: 非允许网站，禁用侧边栏');
-                // 在其他网站禁用侧边栏
-                await chrome.sidePanel.setOptions({
-                    tabId,
-                    enabled: false
-                });
-            }
-        });
+        // // 标签页更新事件 - 根据官方文档实现
+        // chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+        //     // 使用非异步函数避免严格模式问题
+        //     this.handleTabUpdated(tabId, info, tab);
+        // });
 
-        // 标签页激活事件
-        chrome.tabs.onActivated.addListener(async (activeInfo) => {
-            try {
-                const tab = await chrome.tabs.get(activeInfo.tabId);
-                if (tab.url) {
-                    const url = new URL(tab.url);
-                    if (this.isSalesforceOrigin(url.origin)) {
-                        console.log('SOQL Creator: 切换到允许的网站，启用侧边栏');
-                        await chrome.sidePanel.setOptions({
+        // // 标签页激活事件
+        // chrome.tabs.onActivated.addListener((activeInfo) => {
+        //     // 使用非异步函数避免严格模式问题
+        //     this.handleTabActivated(activeInfo);
+        // });
+    }
+
+    // 处理标签页更新事件
+    handleTabUpdated(tabId, info, tab) {
+        console.log('Updated tabId',tabId);
+        console.log('Updated info',info);
+        console.log('Updated tab',tab);
+        if (!tab.url) return;
+        
+        const url = new URL(tab.url);
+        console.log('SOQL Creator: 标签页更新，URL:', url.origin);
+        
+        // 检查是否为允许的网站
+        if (this.isSalesforceOrigin(url.origin)) {
+            console.log('SOQL Creator: 检测到允许的网站，启用侧边栏');
+            // 在允许的网站启用侧边栏
+            chrome.sidePanel.setOptions({
+                tabId,
+                path: 'sidepanel.html',
+                enabled: true
+            }).catch(error => {
+                console.error('SOQL Creator: 设置侧边栏选项失败:', error);
+            });
+        } else {
+            console.log('SOQL Creator: 非允许网站，禁用侧边栏');
+            // 在其他网站禁用侧边栏
+            chrome.sidePanel.setOptions({
+                tabId,
+                enabled: false
+            }).catch(error => {
+                console.error('SOQL Creator: 设置侧边栏选项失败:', error);
+            });
+        }
+    }
+
+    // 处理标签页激活事件
+    handleTabActivated(activeInfo) {
+        console.log('Activate activeInfo',activeInfo);
+        console.log(activeInfo);
+        chrome.tabs.get(activeInfo.tabId, (tab) => {
+            if (chrome.runtime.lastError) {
+                console.error('SOQL Creator: 获取标签页信息失败:', chrome.runtime.lastError);
+                return;
+            }
+            
+            if (tab.url) {
+                const url = new URL(tab.url);
+                if (this.isSalesforceOrigin(url.origin)) {
+                    console.log('SOQL Creator: 切换到允许的网站，启用侧边栏');
+                    chrome.sidePanel.setOptions(
+                        {
                             tabId: activeInfo.tabId,
                             path: 'sidepanel.html',
                             enabled: true
-                        });
-                    } else {
-                        console.log('SOQL Creator: 切换到非允许网站，禁用侧边栏');
-                        await chrome.sidePanel.setOptions({
-                            tabId: activeInfo.tabId,
-                            enabled: false
-                        });
-                    }
+                        }
+                    ).catch(error => {
+                        console.error('SOQL Creator: 设置侧边栏选项失败:', error);
+                    });
+                } else {
+                    console.log('SOQL Creator: 切换到非允许网站，禁用侧边栏');
+                    chrome.sidePanel.setOptions({
+                        tabId: activeInfo.tabId,
+                        enabled: false
+                    }).catch(error => {
+                        console.error('SOQL Creator: 设置侧边栏选项失败:', error);
+                    });
                 }
-            } catch (error) {
-                console.error('SOQL Creator: 处理标签页激活事件失败:', error);
             }
         });
     }
@@ -148,28 +177,32 @@ class SOQLCreatorBackground {
     }
 
     // 切换侧边栏显示/隐藏
-    async toggleSidePanel(tabId) {
-        try {
-            console.log('SOQL Creator: 尝试切换侧边栏，标签页ID:', tabId);
+    toggleSidePanel(tabId) {
+        console.log('SOQL Creator: 尝试切换侧边栏，标签页ID:', tabId);
+        
+        // 获取当前标签页信息
+        chrome.tabs.get(tabId, (tab) => {
+            if (chrome.runtime.lastError) {
+                console.error('SOQL Creator: 获取标签页信息失败:', chrome.runtime.lastError);
+                return;
+            }
             
-            // 获取当前标签页信息
-            const tab = await chrome.tabs.get(tabId);
             if (tab.url) {
                 const url = new URL(tab.url);
                 
                 // 检查是否为Salesforce网站
                 if (this.isSalesforceOrigin(url.origin)) {
                     // 在Salesforce网站，直接打开侧边栏
-                    await chrome.sidePanel.open({ tabId });
-                    console.log('SOQL Creator: 侧边栏打开成功');
+                    chrome.sidePanel.open({ tabId }).then(() => {
+                        console.log('SOQL Creator: 侧边栏打开成功');
+                    }).catch(error => {
+                        console.error('SOQL Creator: 打开侧边栏失败:', error);
+                    });
                 } else {
                     console.log('SOQL Creator: 非Salesforce网站，无法打开侧边栏');
                 }
             }
-            
-        } catch (error) {
-            console.error('SOQL Creator: 切换侧边栏失败:', error);
-        }
+        });
     }
 
     // 判断是否为Salesforce网站
@@ -344,10 +377,16 @@ class SOQLCreatorBackground {
     }
 
     // 处理获取当前域名的消息
-    async handleGetCurrentDomain(sender, sendResponse) {
-        try {
-            // 获取当前活动标签页
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    handleGetCurrentDomain(sender, sendResponse) {
+        // 获取当前活动标签页
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (chrome.runtime.lastError) {
+                console.error('SOQL Creator: 获取当前活动标签页失败:', chrome.runtime.lastError);
+                sendResponse({ success: false, domain: null });
+                return;
+            }
+            
+            const tab = tabs[0];
             if (tab && tab.url) {
                 const url = new URL(tab.url);
                 console.log('SOQL Creator: 当前活动标签页域名:', url.origin);
@@ -356,10 +395,7 @@ class SOQLCreatorBackground {
                 console.error('SOQL Creator: 无法获取当前活动标签页');
                 sendResponse({ success: false, domain: null });
             }
-        } catch (error) {
-            console.error('SOQL Creator: 处理获取当前域名失败:', error);
-            sendResponse({ success: false, domain: null });
-        }
+        });
     }
 
 }
@@ -368,13 +404,16 @@ class SOQLCreatorBackground {
 new SOQLCreatorBackground();
 
 // 插件安装/更新事件
-chrome.runtime.onInstalled.addListener(async (details) => {
+chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === 'install') {
         console.log('SOQL Creator 插件已安装');
         
         // 设置默认侧边栏行为
-        await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-        console.log('SOQL Creator: 默认侧边栏行为已设置');
+        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).then(() => {
+            console.log('SOQL Creator: 默认侧边栏行为已设置');
+        }).catch(error => {
+            console.error('SOQL Creator: 设置默认侧边栏行为失败:', error);
+        });
         
         // 打开欢迎页面
         chrome.tabs.create({
