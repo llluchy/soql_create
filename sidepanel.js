@@ -1,47 +1,52 @@
-// SOQL Creator 侧边栏主要逻辑 - 基于 Salesforce Inspector Reloaded 最佳实践
+/**
+ * SOQL Creator 侧边栏主要逻辑类
+ * 基于 Salesforce Inspector Reloaded 最佳实践
+ * 负责管理SOQL查询生成、对象选择、字段管理等功能
+ */
 class SOQLCreator {
 
     // ========================================
-    // 构造函数
+    // 构造函数 - 初始化所有属性和状态
     // ========================================
     constructor() {
-        this.currentObject = null; // 当前选中的对象
-        this.selectedFields = new Set(); // 选中的字段
-        this.objects = []; // 对象列表
-        this.allObjects = []; // 备份所有对象，用于筛选
-        this.fields = {}; // 字段列表
-        this.sfHost = null; // Salesforce主机
-        this.environments = new Map(); // 存储所有环境信息
-        this.currentEnvironment = null; // 当前选中的环境
-        this.sessionCache = new Map(); // 权限缓存：存储每个环境的会话状态
-        this.standardObjectWhitelist = SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST; // 使用常量类中的标准对象白名单
+        // 核心数据属性
+        this.currentObject = null; // 当前选中的Salesforce对象
+        this.selectedFields = new Set(); // 用户选中的字段集合
+        this.objects = []; // 当前显示的对象列表（经过筛选）
+        this.allObjects = []; // 所有对象的备份，用于筛选操作
+        this.fields = {}; // 字段数据缓存，按对象API名称索引
+        this.sfHost = null; // 当前Salesforce实例主机名
         
+        // 环境管理相关
+        this.environments = new Map(); // 存储所有检测到的Salesforce环境
+        this.currentEnvironment = null; // 当前选中的环境信息
+        
+        // 权限和会话管理
+        this.sessionCache = new Map(); // 会话缓存，避免重复获取权限
+        
+        // 配置和常量
+        this.standardObjectWhitelist = SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST; // 标准对象白名单
+        
+        // 初始化应用
         this.init();
     }
 
+    /**
+     * 初始化应用
+     * 按顺序执行所有初始化步骤
+     */
     init() {
-        this.bindEvents();
-        this.bindMessageEvents();
-        this.loadHistory();
-        this.checkSalesforcePage();
-        this.initializeEnvironment();
+        this.bindEvents(); // 绑定DOM事件监听器
+        this.bindMessageEvents(); // 绑定Chrome扩展消息监听器
+        this.loadHistory(); // 加载历史记录
+        this.checkSalesforcePage(); // 检查当前页面是否为Salesforce页面
+        this.initializeEnvironment(); // 初始化环境检测
     }
 
     // ========================================
-    // 绑定事件
+    // 绑定DOM事件监听器
     // ========================================
     bindEvents() {
-        // 对象搜索事件
-        document.getElementById('objectSearch').addEventListener('input', (e) => {
-            this.filterObjects();
-        });
-
-        // 对象类型筛选事件
-        document.querySelectorAll('input[name="objectType"]').forEach(radio => {
-            radio.addEventListener('change', () => {
-                this.filterObjects();
-            });
-        });
 
         // 环境选择器事件
         document.getElementById('environmentSelect').addEventListener('change', (e) => {
@@ -53,41 +58,52 @@ class SOQLCreator {
             this.refreshEnvironmentDetection();
         });
 
+        // 对象类型筛选（业务对象、元数据、系统对象等）
+        document.querySelectorAll('input[name="objectType"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                this.filterObjects(); // 根据类型筛选对象
+            });
+        });
+
+        // 对象搜索功能
+        document.getElementById('objectSearch').addEventListener('input', (e) => {
+            this.filterObjects(); // 实时搜索和筛选对象
+        });
+
+        // 刷新对象按钮 - 重新加载当前环境的对象列表
+        document.getElementById('refreshObjects').addEventListener('click', () => {
+            this.loadObjects();
+        });
+
         // SOQL区域折叠/展开按钮事件
         document.getElementById('toggleSoql').addEventListener('click', () => {
             this.toggleSoqlSection();
         });
 
-        // 查看SOQL按钮事件
+        // 查看SOQL按钮 - 与折叠按钮功能相同
         document.getElementById('viewSoql').addEventListener('click', () => {
             this.toggleSoqlSection();
         });
 
-        // 刷新对象按钮
-        document.getElementById('refreshObjects').addEventListener('click', () => {
-            this.loadObjects();
-        });
-
-
-        // 字段控制按钮
+        // 字段控制按钮组
         document.getElementById('selectAllFields').addEventListener('click', () => {
-            this.selectAllFields();
+            this.selectAllFields(); // 选择当前对象的所有字段
         });
 
         document.getElementById('deselectAllFields').addEventListener('click', () => {
-            this.deselectAllFields();
+            this.deselectAllFields(); // 取消选择所有字段
         });
 
         document.getElementById('selectCommonFields').addEventListener('click', () => {
-            this.selectCommonFields();
+            this.selectCommonFields(); // 选择常用字段（Id, Name, CreatedDate等）
         });
 
-        // 字段解析按钮
+        // 字段解析功能 - 从文本中自动解析并选择字段
         document.getElementById('parseFields').addEventListener('click', () => {
             this.parseAndSelectFields();
         });
 
-        // 字段解析输入框回车事件
+        // 字段解析输入框回车事件 - 支持回车键触发解析
         document.getElementById('fieldParserInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 this.parseAndSelectFields();
@@ -96,36 +112,47 @@ class SOQLCreator {
 
         // SOQL操作按钮
         document.getElementById('copySoql').addEventListener('click', () => {
-            this.copySOQL();
+            this.copySOQL(); // 复制生成的SOQL到剪贴板
         });
 
-        // 设置按钮
+        // 设置按钮 - 打开设置面板
         document.getElementById('settingsBtn').addEventListener('click', () => {
             this.openSettings();
         });
 
-        // 扩展按钮
+        // 扩展按钮 - 打开扩展功能页面
         document.getElementById('expandBtn').addEventListener('click', () => {
             this.openExpandPage();
         });
     }
 
 
-    // 检查是否在Salesforce页面
+    /**
+     * 检查当前页面是否为Salesforce页面
+     * 如果是，则自动加载对象列表
+     */
     async checkSalesforcePage() {
         try {
+            // 获取当前页面的Salesforce主机信息
             this.sfHost = await sfConn.getSfHost();
             if (this.sfHost && this.isSalesforceHost(this.sfHost)) {
+                // 是Salesforce页面，加载对象列表
                 await this.loadObjects();
         } else {
+                // 不是Salesforce页面，显示提示信息
             this.showMessage('请在Salesforce页面使用此插件', 'warning');
             }
         } catch (error) {
+            // 检测失败，显示错误信息
             this.showMessage('无法检测当前页面，请确保在Salesforce页面使用', 'error');
         }
     }
 
-    // 判断是否为Salesforce主机
+    /**
+     * 判断主机名是否为Salesforce相关域名
+     * @param {string} hostname - 要检查的主机名
+     * @returns {boolean} 是否为Salesforce主机
+     */
     isSalesforceHost(hostname) {
         return hostname.includes('salesforce.com') || 
             hostname.includes('force.com') ||
@@ -133,18 +160,26 @@ class SOQLCreator {
             hostname.includes('visualforce.com');
     }
 
-    // 检查权限是否已获取
+    /**
+     * 检查指定环境的会话是否有效（未过期）
+     * @param {string} environmentKey - 环境标识符
+     * @returns {boolean} 会话是否有效
+     */
     hasValidSession(environmentKey) {
         const cached = this.sessionCache.get(environmentKey);
         if (!cached) return false;
         
         // 检查缓存是否过期（5分钟）
         const now = Date.now();
-        const cacheExpiry = 5 * 60 * 1000; // 5分钟
+        const cacheExpiry = 5 * 60 * 1000; // 5分钟缓存有效期
         return (now - cached.timestamp) < cacheExpiry && cached.sessionId;
     }
 
-    // 缓存会话信息
+    /**
+     * 缓存会话信息到内存中
+     * @param {string} environmentKey - 环境标识符
+     * @param {string} sessionId - 会话ID
+     */
     cacheSession(environmentKey, sessionId) {
         this.sessionCache.set(environmentKey, {
             sessionId: sessionId,
@@ -152,63 +187,76 @@ class SOQLCreator {
         });
     }
 
-    // 清除会话缓存
+    /**
+     * 清除会话缓存
+     * @param {string|null} environmentKey - 要清除的环境标识符，null表示清除所有
+     */
     clearSessionCache(environmentKey = null) {
         if (environmentKey) {
+            // 清除指定环境的缓存
             this.sessionCache.delete(environmentKey);
             } else {
+            // 清除所有环境的缓存
             this.sessionCache.clear();
         }
     }
 
-    // 处理会话失效
+    /**
+     * 处理会话失效情况
+     * @param {string} environmentKey - 失效的环境标识符
+     */
     handleSessionExpired(environmentKey) {
         this.clearSessionCache(environmentKey);
         this.showMessage('会话已过期，正在重新获取权限...', 'warning');
     }
 
-    // 加载Salesforce对象列表
+    /**
+     * 加载Salesforce对象列表
+     * 包含权限检查、会话缓存、错误处理等完整流程
+     */
     async loadObjects() {
         try {
-            // 显示加载状态
+            // 显示加载状态和用户提示
             this.showLoadingStatus('正在加载对象列表...', 'objectList');
             this.showMessage('正在加载对象列表...');
             
-            // 检查是否已有有效会话
+            // 确定当前环境标识符
             const environmentKey = this.currentEnvironment ? this.currentEnvironment.key : this.sfHost;
             let sessionId = null;
             
+            // 检查是否已有有效的会话缓存
             if (this.hasValidSession(environmentKey)) {
-                // 使用缓存的会话
+                // 使用缓存的会话，避免重复获取权限
                 const cached = this.sessionCache.get(environmentKey);
                 sessionId = cached.sessionId;
                 sfConn.sessionId = sessionId;
                 sfConn.instanceHostname = this.sfHost;
             } else {
-                // 获取新会话
+                // 获取新的会话
                 await sfConn.getSession(this.sfHost);
                 sessionId = sfConn.sessionId;
                 
                 if (sessionId) {
-                    // 缓存会话信息
+                    // 缓存新获取的会话信息
                     this.cacheSession(environmentKey, sessionId);
                 }
             }
             
+            // 验证会话是否获取成功
             if (!sessionId) {
                 this.hideLoadingStatus(document.getElementById('objectList'));
                 this.showMessage('无法获取Salesforce会话，请检查登录状态', 'error');
                 return;
             }
             
-            // 使用新的API模块获取对象列表
+            // 调用Salesforce API获取对象列表
             const result = await soqlExecutor.getSObjects();
             
             if (result && result.sobjects && result.sobjects.length > 0) {
-                // 过滤出可查询的对象，并按名称排序
+                // 过滤和转换对象数据
                 this.allObjects = result.sobjects
-                    .filter(obj => obj.queryable === true && obj.retrieveable === true)
-                    .sort((a, b) => a.label.localeCompare(b.label))
+                    .filter(obj => obj.queryable === true && obj.retrieveable === true) // 只保留可查询的对象
+                    .sort((a, b) => a.label.localeCompare(b.label)) // 按标签名称排序
                     .map(obj => ({
                         name: obj.name,
                         label: obj.label || obj.name,
@@ -219,13 +267,15 @@ class SOQLCreator {
                         deletable: obj.deletable || false
                     }));
                 
-                // 初始化时显示所有对象
+                // 初始化显示列表
                 this.objects = [...this.allObjects];
                 
+                // 更新UI显示
                 this.hideLoadingStatus(document.getElementById('objectList'));
                 this.populateObjectList();
                 this.showMessage(`成功加载 ${this.allObjects.length} 个对象`, 'success');
             } else {
+                // 没有获取到对象数据
                 this.hideLoadingStatus(document.getElementById('objectList'));
                 this.showMessage('无法获取对象列表，请检查权限', 'error');
                 this.allObjects = [];
@@ -235,15 +285,16 @@ class SOQLCreator {
         } catch (error) {
             this.hideLoadingStatus(document.getElementById('objectList'));
             
-            // 检查是否是会话失效错误
+            // 检查是否是会话失效错误（401 Unauthorized）
             if (error.message && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
                 const environmentKey = this.currentEnvironment ? this.currentEnvironment.key : this.sfHost;
                 this.handleSessionExpired(environmentKey);
-                // 重试一次
+                // 自动重试一次
                 setTimeout(() => this.loadObjects(), 1000);
                 return;
             }
             
+            // 处理其他错误
             ErrorHandler.handle(error, 'loadObjects');
             this.allObjects = [];
             this.objects = [];
@@ -251,20 +302,23 @@ class SOQLCreator {
         }
     }
 
-    // 加载对象字段
+    /**
+     * 加载指定对象的字段列表
+     * @param {string} objectApiName - 对象的API名称
+     */
     async loadFields(objectApiName) {
         try {
+            // 显示加载状态
             this.showLoadingStatus('正在加载字段列表...', 'fieldList');
             this.showMessage('正在加载字段列表...');
             
-            // 使用新的API模块获取字段列表
+            // 调用Salesforce API获取对象字段描述
             const result = await soqlExecutor.describeSObject(objectApiName);
             
             if (result && result.fields && result.fields.length > 0) {
-                console.log('fields', result.fields);
-                // 过滤出可查询的字段，并按名称排序
-                // 注意：根据实际数据，字段没有queryable和retrieveable属性
-                // 我们使用其他属性来判断字段是否可查询
+                // 过滤出可查询的字段
+                // 注意：Salesforce字段没有queryable和retrieveable属性
+                // 使用deprecatedAndHidden和sortable属性来判断字段是否可用
                 const queryableFields = result.fields
                     .filter(field => {
                         // 过滤掉隐藏和废弃的字段
@@ -273,9 +327,9 @@ class SOQLCreator {
                         if (field.sortable === false) return false;
                         return true;
                     })
-                    .sort((a, b) => a.label.localeCompare(b.label));
+                    .sort((a, b) => a.label.localeCompare(b.label)); // 按标签名称排序
                 
-                // 转换为我们的格式
+                // 转换为内部格式并缓存
                 const fieldsMap = {};
                 queryableFields.forEach(field => {
                     fieldsMap[field.name] = {
@@ -290,7 +344,7 @@ class SOQLCreator {
                         picklistValues: field.picklistValues || [],
                         referenceTo: field.referenceTo || [],
                         relationshipName: field.relationshipName || null,
-                        // 添加更多有用的属性
+                        // Salesforce字段属性
                         createable: field.createable,
                         updateable: field.updateable,
                         filterable: field.filterable,
@@ -300,16 +354,20 @@ class SOQLCreator {
                         custom: field.custom,
                         soapType: field.soapType,
                         inlineHelpText: field.inlineHelpText,
-                        // 添加字段描述信息
+                        // 字段描述信息
                         description: field.inlineHelpText || field.label || field.name
                     };
                 });
                 
+                // 缓存字段数据
                 this.fields[objectApiName] = fieldsMap;
+                
+                // 更新UI显示
                 this.hideLoadingStatus(document.getElementById('fieldList'));
                 this.populateFieldList();
                 this.showMessage(`成功加载 ${Object.keys(fieldsMap).length} 个字段`, 'success');
             } else {
+                // 没有获取到字段数据
                 this.hideLoadingStatus(document.getElementById('fieldList'));
                 this.showMessage('无法获取字段列表，请检查权限', 'error');
                 this.fields[objectApiName] = {};
@@ -322,11 +380,12 @@ class SOQLCreator {
             if (error.message && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
                 const environmentKey = this.currentEnvironment ? this.currentEnvironment.key : this.sfHost;
                 this.handleSessionExpired(environmentKey);
-                // 重试一次
+                // 自动重试一次
                 setTimeout(() => this.loadFields(objectApiName), 1000);
                 return;
             }
             
+            // 处理其他错误
             ErrorHandler.handle(error, 'loadFields');
             this.fields[objectApiName] = {};
             this.populateFieldList();
@@ -477,35 +536,43 @@ class SOQLCreator {
         await this.loadFields(objectApiName);
     }
 
-    // 判断对象类型
+    /**
+     * 判断Salesforce对象的类型
+     * @param {Object} object - 对象信息
+     * @returns {string} 对象类型：'business'|'metadata'|'system'|'share'
+     */
     getObjectType(object) {
         const apiName = object.name || object.apiName;
         
-        // 过滤掉Share对象
+        // Share对象（以__Share结尾）- 用于权限共享，通常不用于查询
         if (apiName.endsWith('__Share')) {
             return 'share'; // 特殊标记，用于过滤
         }
         
-        // 自定义对象 (以__c结尾)
+        // 自定义对象（以__c结尾）- 用户创建的业务对象
         if (apiName.endsWith('__c')) {
-            return 'business'; // 业务对象（包含标准对象和自定义对象）
+            return 'business'; // 归类为业务对象
         }
         
-        // 元数据对象 (以__mdt结尾)
+        // 元数据对象（以__mdt结尾）- 自定义元数据类型
         if (apiName.endsWith('__mdt')) {
             return 'metadata';
         }
         
-        // 系统对象 (以__开头的其他对象)
+        // 系统对象（以__开头的其他对象）- Salesforce内部系统对象
         if (apiName.startsWith('__')) {
             return 'system';
         }
         
-        // 标准对象 (其他所有对象) - 现在归类为业务对象
+        // 标准对象（其他所有对象）- Salesforce内置的标准业务对象
         return 'business';
     }
 
-    // 获取对象类型标签
+    /**
+     * 获取对象类型的中文标签
+     * @param {string} type - 对象类型
+     * @returns {string} 中文标签
+     */
     getObjectTypeLabel(type) {
         const typeLabels = {
             'business': '业务对象',
@@ -737,23 +804,34 @@ class SOQLCreator {
         this.generateSOQL();
     }
 
-    // 生成SOQL查询
+    /**
+     * 生成SOQL查询语句
+     * 根据当前选中的对象和字段生成标准的SOQL SELECT语句
+     */
     generateSOQL() {
         const soqlOutput = document.getElementById('soqlOutput');
         
+        // 检查是否有选中的对象和字段
         if (!this.currentObject || this.selectedFields.size === 0) {
             soqlOutput.value = '';
             return;
         }
 
+        // 生成SOQL语句
         const fields = Array.from(this.selectedFields).join(', ');
         const soql = `SELECT ${fields}\nFROM ${this.currentObject.apiName}`;
         
+        // 更新输出区域
         soqlOutput.value = soql;
+        
+        // 保存到历史记录
         this.saveToHistory(soql);
     }
 
-    // 复制SOQL到剪贴板
+    /**
+     * 复制SOQL语句到剪贴板
+     * 使用现代浏览器的Clipboard API
+     */
     async copySOQL() {
         const soqlOutput = document.getElementById('soqlOutput');
         if (!soqlOutput.value.trim()) {
@@ -762,49 +840,61 @@ class SOQLCreator {
         }
 
         try {
+            // 使用Clipboard API复制文本
             await navigator.clipboard.writeText(soqlOutput.value);
             this.showMessage('SOQL已复制到剪贴板');
         } catch (error) {
+            // 复制失败时的降级处理
             console.error('复制失败:', error);
             this.showMessage('复制失败，请手动复制');
         }
     }
 
-    // 保存到历史记录
+    /**
+     * 保存SOQL查询到历史记录
+     * @param {string} soql - 要保存的SOQL语句
+     */
     saveToHistory(soql) {
         if (!soql.trim()) return;
 
         const history = this.getHistory();
         const newHistoryItem = {
-            id: Date.now(),
-            object: this.currentObject?.label || '未知对象',
-            soql: soql,
-            timestamp: new Date().toLocaleString()
+            id: Date.now(), // 唯一标识符
+            object: this.currentObject?.label || '未知对象', // 对象名称
+            soql: soql, // SOQL语句
+            timestamp: new Date().toLocaleString() // 时间戳
         };
 
-        // 避免重复
+        // 避免重复保存相同的SOQL语句
         const exists = history.find(item => item.soql === soql);
         if (!exists) {
-            history.unshift(newHistoryItem);
-            // 只保留最近20条记录
+            history.unshift(newHistoryItem); // 添加到列表开头
+            // 只保留最近20条记录，避免localStorage过大
             if (history.length > 20) {
                 history.pop();
             }
+            // 保存到localStorage
             localStorage.setItem('soql_history', JSON.stringify(history));
             this.updateHistoryDisplay();
         }
     }
 
-    // 获取历史记录
+    /**
+     * 从localStorage获取历史记录
+     * @returns {Array} 历史记录数组
+     */
     getHistory() {
         try {
             return JSON.parse(localStorage.getItem('soql_history') || '[]');
         } catch {
+            // 解析失败时返回空数组
             return [];
         }
     }
 
-    // 加载历史记录
+    /**
+     * 加载历史记录并更新显示
+     */
     loadHistory() {
         this.updateHistoryDisplay();
     }
@@ -847,7 +937,11 @@ class SOQLCreator {
         this.showMessage('已加载历史记录');
     }
 
-    // 显示消息
+    /**
+     * 显示消息提示
+     * @param {string} message - 消息内容
+     * @param {string} type - 消息类型：'info'|'success'|'warning'|'error'
+     */
     showMessage(message, type = 'info') {
         const messageContainer = document.getElementById('messageContainer');
         const messageContent = document.getElementById('messageContent');
@@ -866,10 +960,13 @@ class SOQLCreator {
             this.hideMessage();
         }, 5000);
         
+        // 输出到控制台用于调试
         console.log(`[${type.toUpperCase()}] ${message}`);
     }
 
-    // 隐藏消息
+    /**
+     * 隐藏消息提示
+     */
     hideMessage() {
         const messageContainer = document.getElementById('messageContainer');
         messageContainer.style.display = 'none';
@@ -929,11 +1026,15 @@ class SOQLCreator {
         }
     }
 
-    // 解析并选择字段
+    /**
+     * 解析并选择字段
+     * 从用户输入的文本中解析字段名称，并自动选择匹配的字段
+     */
     parseAndSelectFields() {
         const input = document.getElementById('fieldParserInput');
         const inputText = input.value.trim();
         
+        // 验证输入
         if (!inputText) {
             this.showMessage('请输入要解析的字段列表', 'warning');
             return;
@@ -964,7 +1065,7 @@ class SOQLCreator {
             // 选择匹配的字段
             this.selectMatchedFields(matchedFields);
             
-            // 显示结果
+            // 显示解析结果
             const unmatchedCount = fieldNames.length - matchedFields.length;
             if (unmatchedCount > 0) {
                 this.showMessage(`成功选择 ${matchedFields.length} 个字段，${unmatchedCount} 个字段未匹配`, 'success');
@@ -981,21 +1082,27 @@ class SOQLCreator {
         }
     }
 
-    // 解析字段名称 - 支持多种格式
+    /**
+     * 解析字段名称 - 支持多种格式
+     * 支持从Excel、文档等复制的字段列表，自动识别分隔符
+     * @param {string} inputText - 用户输入的文本
+     * @returns {Array<string>} 解析出的字段名称数组
+     */
     parseFieldNames(inputText) {
         const fieldNames = [];
         
-        // 移除常见的包装字符
+        // 移除常见的包装字符（如方括号、圆括号、引号等）
         let cleanText = inputText
             .replace(/^[\[\](){}"]+/, '')  // 移除开头的包装字符
             .replace(/[\[\](){}"]+$/, '')  // 移除结尾的包装字符
             .trim();
 
-        // 尝试不同的分隔符
+        // 尝试不同的分隔符（按优先级排序）
         const separators = [',', ';', '\t', '\n', ' ', '|'];
         
         for (const separator of separators) {
             if (cleanText.includes(separator)) {
+                // 找到分隔符，按此分隔符分割
                 const parts = cleanText.split(separator);
                 for (const part of parts) {
                     const fieldName = part.trim();
@@ -1003,11 +1110,11 @@ class SOQLCreator {
                         fieldNames.push(fieldName);
                     }
                 }
-                break;
+                break; // 使用第一个匹配的分隔符
             }
         }
 
-        // 如果没有找到分隔符，尝试作为单个字段
+        // 如果没有找到分隔符，尝试作为单个字段处理
         if (fieldNames.length === 0 && this.isValidFieldName(cleanText)) {
             fieldNames.push(cleanText);
         }
@@ -1015,26 +1122,35 @@ class SOQLCreator {
         return fieldNames;
     }
 
-    // 验证字段名称是否有效
+    /**
+     * 验证字段名称是否符合Salesforce命名规范
+     * @param {string} fieldName - 要验证的字段名称
+     * @returns {boolean} 是否为有效的字段名称
+     */
     isValidFieldName(fieldName) {
         // Salesforce字段名称规则：字母开头，只能包含字母、数字、下划线
         return /^[a-zA-Z][a-zA-Z0-9_]*$/.test(fieldName) && fieldName.length > 0;
     }
 
-    // 匹配字段
+    /**
+     * 匹配字段名称
+     * 将解析出的字段名称与当前对象的可用字段进行匹配
+     * @param {Array<string>} fieldNames - 要匹配的字段名称数组
+     * @returns {Array<string>} 匹配成功的字段名称数组
+     */
     matchFields(fieldNames) {
         const matchedFields = [];
         const availableFields = this.fields[this.currentObject.apiName] || {};
         const availableFieldNames = Object.keys(availableFields);
 
         for (const fieldName of fieldNames) {
-            // 精确匹配
+            // 1. 精确匹配（完全相同的字段名）
             if (availableFieldNames.includes(fieldName)) {
                 matchedFields.push(fieldName);
                 continue;
             }
 
-            // 大小写不敏感匹配
+            // 2. 大小写不敏感匹配
             const lowerFieldName = fieldName.toLowerCase();
             const matchedField = availableFieldNames.find(name => 
                 name.toLowerCase() === lowerFieldName
@@ -1044,7 +1160,7 @@ class SOQLCreator {
                 continue;
             }
 
-            // 部分匹配（字段名包含输入的内容）
+            // 3. 部分匹配（字段名包含输入的内容或输入包含字段名）
             const partialMatch = availableFieldNames.find(name => 
                 name.toLowerCase().includes(lowerFieldName) || 
                 lowerFieldName.includes(name.toLowerCase())
@@ -1057,7 +1173,11 @@ class SOQLCreator {
         return matchedFields;
     }
 
-    // 选择匹配的字段
+    /**
+     * 选择匹配的字段
+     * 将匹配成功的字段设置为选中状态，并更新UI和SOQL
+     * @param {Array<string>} matchedFields - 匹配成功的字段名称数组
+     */
     selectMatchedFields(matchedFields) {
         // 先清空所有选择
         this.selectedFields.clear();
@@ -1067,17 +1187,20 @@ class SOQLCreator {
             this.selectedFields.add(fieldName);
         });
 
-        // 更新UI
+        // 更新UI中的复选框状态
         const checkboxes = document.querySelectorAll('#fieldList input[type="checkbox"]');
         checkboxes.forEach(checkbox => {
             checkbox.checked = this.selectedFields.has(checkbox.value);
         });
 
-        // 重新生成SOQL
+        // 重新生成SOQL语句
         this.generateSOQL();
     }
 
-    // 打开设置面板
+    /**
+     * 打开设置面板
+     * 创建模态框显示设置选项和关于信息
+     */
     openSettings() {
         // 创建设置模态框
         const modal = document.createElement('div');
@@ -1123,7 +1246,10 @@ class SOQLCreator {
         this.loadSettings(modal);
     }
 
-    // 打开扩展页面
+    /**
+     * 打开扩展页面
+     * 在新标签页中打开扩展功能页面
+     */
     openExpandPage() {
         // 创建新标签页打开扩展页面
         chrome.tabs.create({
@@ -1152,17 +1278,24 @@ class SOQLCreator {
         // 当前没有需要加载的设置
     }
 
-    // 初始化环境检测
+    /**
+     * 初始化环境检测
+     * 检测当前标签页是否为Salesforce页面，并设置相应的环境
+     */
     async initializeEnvironment() {
         try {
+            // 获取当前活动标签页
             const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
             if (tabs.length > 0 && tabs[0].url) {
                 const url = tabs[0].url;
                 const urlObj = new URL(url);
                 
+                // 检查是否为Salesforce页面
                 if (this.isSalesforceHost(urlObj.hostname)) {
+                    // 处理环境变化
                     await this.handleEnvironmentChange(url, urlObj.origin);
                 } else {
+                    // 不是Salesforce页面，清空环境信息
                     this.currentEnvironment = null;
                     this.sfHost = null;
                 }
@@ -1171,6 +1304,7 @@ class SOQLCreator {
             this.showMessage('环境检测失败，请点击刷新按钮重试', 'error');
         }
         
+        // 更新环境选择器显示
         this.updateEnvironmentSelector();
     }
 
@@ -1327,7 +1461,10 @@ class SOQLCreator {
         }
     }
 
-    // 切换SOQL区域折叠/展开状态
+    /**
+     * 切换SOQL区域折叠/展开状态
+     * 控制SOQL文本区域的显示和隐藏
+     */
     toggleSoqlSection() {
         const toggleBtn = document.getElementById('toggleSoql');
         const soqlTextareaContainer = document.getElementById('soqlTextareaContainer');
@@ -1337,11 +1474,11 @@ class SOQLCreator {
         const isCollapsed = soqlTextareaContainer.classList.contains('collapsed');
         
         if (isCollapsed) {
-            // 展开
+            // 展开SOQL文本区域
             soqlTextareaContainer.classList.remove('collapsed');
             toggleBtn.classList.remove('collapsed');
         } else {
-            // 折叠
+            // 折叠SOQL文本区域
             soqlTextareaContainer.classList.add('collapsed');
             toggleBtn.classList.add('collapsed');
         }
@@ -1349,9 +1486,16 @@ class SOQLCreator {
 
 }
 
-// 页面加载完成后初始化
+// ========================================
+// 页面初始化
+// ========================================
+
+/**
+ * 页面加载完成后的初始化逻辑
+ * 处理OAuth回调和创建SOQL Creator实例
+ */
 document.addEventListener('DOMContentLoaded', () => {
-    // 检查是否是OAuth回调
+    // 检查是否是OAuth回调页面
     if (window.location.hash.includes('access_token')) {
         const result = oauthManager.handleOAuthCallback();
         if (result.success) {
@@ -1360,6 +1504,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // 初始化SOQL Creator
+    // 创建并初始化SOQL Creator实例
     window.soqlCreator = new SOQLCreator();
 });
