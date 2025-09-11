@@ -6,13 +6,18 @@ class SalesforceConnection {
         this.clientId = "SOQL Creator Extension";
     }
 
-    // 获取会话 - 支持多种方式
-    async getSession(sfHost) {
+    // 获取会话 - 支持多种方式，带权限检查
+    async getSession(sfHost, forceRefresh = false) {
         const ACCESS_TOKEN = "access_token";
         const currentUrlIncludesToken = window.location.href.includes(ACCESS_TOKEN);
         const oldToken = localStorage.getItem(sfHost + "_" + ACCESS_TOKEN);
         
         this.instanceHostname = sfHost;
+        
+        // 如果已有会话且不强制刷新，直接返回
+        if (!forceRefresh && this.sessionId && this.instanceHostname === sfHost) {
+            return this.sessionId;
+        }
         
         // 方式1: OAuth流程刚完成
         if (currentUrlIncludesToken) {
@@ -22,12 +27,10 @@ class SalesforceConnection {
             sfHost = decodeURI(hashParams.get("instance_url")).replace(/^https?:\/\//i, "");
             this.sessionId = accessToken;
             localStorage.setItem(sfHost + "_" + ACCESS_TOKEN, accessToken);
-            console.log('SOQL Creator: 从OAuth回调获取到访问令牌');
         }
         // 方式2: 使用已保存的访问令牌
         else if (oldToken) {
             this.sessionId = oldToken;
-            console.log('SOQL Creator: 使用已保存的访问令牌');
         }
         // 方式3: 从cookie获取会话
         else {
@@ -36,11 +39,21 @@ class SalesforceConnection {
             if (message) {
                 this.instanceHostname = message.hostname;
                 this.sessionId = message.key;
-                console.log('SOQL Creator: 从cookie获取到会话ID');
             }
         }
         
         return this.sessionId;
+    }
+
+    // 清除会话缓存
+    clearSession() {
+        this.sessionId = null;
+        this.instanceHostname = null;
+    }
+
+    // 检查会话是否有效
+    hasValidSession() {
+        return this.sessionId && this.instanceHostname;
     }
 
     // 获取Salesforce主机 - 基于 Salesforce Inspector Reloaded
@@ -56,10 +69,8 @@ class SalesforceConnection {
             const sfHost = await new Promise(resolve =>
                 chrome.runtime.sendMessage({message: "getSfHost", url: tab.url}, resolve));
             
-            console.log('SOQL Creator: 获取到Salesforce主机:', sfHost);
             return sfHost;
         } catch (error) {
-            console.error('SOQL Creator: 获取Salesforce主机失败:', error);
             return null;
         }
     }
@@ -175,7 +186,6 @@ class SalesforceConnection {
 
     // 显示令牌过期错误
     showTokenExpiredError() {
-        console.warn("SOQL Creator: Access token expired. Please generate a new token.");
         // 这里可以触发UI显示错误消息
         if (window.soqlCreator) {
             window.soqlCreator.showMessage('访问令牌已过期，请重新生成', 'warning');
@@ -212,7 +222,6 @@ class SOQLExecutor {
             const result = await this.sfConn.rest(url);
             return result;
         } catch (error) {
-            console.error("SOQL Creator: SOQL execution failed:", error);
             throw error;
         }
     }
@@ -225,7 +234,6 @@ class SOQLExecutor {
             const result = await this.sfConn.rest(url);
             return result;
         } catch (error) {
-            console.error("SOQL Creator: SOSL execution failed:", error);
             throw error;
         }
     }
@@ -238,7 +246,6 @@ class SOQLExecutor {
             const result = await this.sfConn.rest(url);
             return result;
         } catch (error) {
-            console.error("SOQL Creator: Describe failed:", error);
             throw error;
         }
     }
@@ -251,7 +258,6 @@ class SOQLExecutor {
             const result = await this.sfConn.rest(url);
             return result;
         } catch (error) {
-            console.error("SOQL Creator: Get SObjects failed:", error);
             throw error;
         }
     }
@@ -291,7 +297,6 @@ class OAuthManager {
             const sfHost = instanceUrl.replace(/^https?:\/\//i, "");
             localStorage.setItem(sfHost + "_access_token", accessToken);
             
-            console.log('SOQL Creator: OAuth回调处理成功');
             return { success: true, host: sfHost };
         }
         
@@ -302,7 +307,6 @@ class OAuthManager {
 // 错误处理类
 class ErrorHandler {
     static handle(error, context = "") {
-        console.error(`SOQL Creator: Error in ${context}:`, error);
         
         if (error.message.includes("Unauthorized")) {
             this.showTokenError();
@@ -335,7 +339,6 @@ class ErrorHandler {
     }
 
     static showNotification(message, type = "info") {
-        console.log(`SOQL Creator: [${type.toUpperCase()}] ${message}`);
         if (window.soqlCreator) {
             window.soqlCreator.showMessage(message, type);
         }

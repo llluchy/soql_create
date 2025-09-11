@@ -6,7 +6,7 @@ class SOQLCreatorConstants {
     constructor() {
         // 标准对象白名单 - 只有在此数组中的标准对象才会显示
         this.STANDARD_OBJECT_WHITELIST = [
-            'Account', 
+            'Account', 'AsyncApexJob',
             // 'Activity', 'AlternativePaymentMethod', 'ApiAnomalyEventStore',
             // 'ApprovalSubmission', 'ApprovalSubmissionDetail', 'ApprovalWorkItem',
             // 'Asset', 'AssetAction', 'AssetActionSource', 'AssetRelationship', 'AssetStatePeriod',

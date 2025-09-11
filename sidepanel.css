@@ -15,9 +15,10 @@ body {
 
 .container {
     width: 100%;
-    min-height: 100vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 /* 头部样式 */
@@ -72,6 +73,127 @@ body {
 .settings-btn svg {
     width: 18px;
     height: 18px;
+}
+
+/* 头部按钮容器 */
+.header-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 扩展按钮样式 */
+.expand-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    color: white;
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    width: 32px;
+    height: 32px;
+}
+
+.expand-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-1px);
+}
+
+.expand-btn:active {
+    transform: translateY(0);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.expand-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* 环境选择器样式 */
+.environment-selector {
+    background: white;
+    padding: 12px 20px;
+    border-bottom: 1px solid #e1e5e9;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.environment-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #495057;
+    white-space: nowrap;
+}
+
+.environment-select {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 14px;
+    background: white;
+    color: #495057;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+}
+
+.environment-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.environment-select:hover {
+    border-color: #adb5bd;
+}
+
+.refresh-env-btn {
+    background: #28a745;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    cursor: pointer;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.refresh-env-btn:hover {
+    background: #218838;
+}
+
+.refresh-env-btn:active {
+    background: #1e7e34;
+    transform: translateY(1px);
+}
+
+.refresh-env-btn:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.refresh-env-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.refresh-env-btn.loading svg {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 /* 消息提示区域 - 使用绝对定位避免布局跳动 */
@@ -150,13 +272,15 @@ body {
 .main-content {
     flex: 1;
     padding: 20px;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .section {
     background: white;
     border-radius: 8px;
     padding: 20px;
-    margin-bottom: 20px;
+    margin-bottom: 10px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     border: 1px solid #e9ecef;
 }
@@ -574,6 +698,81 @@ body {
     gap: 10px;
 }
 
+/* 固定的SOQL区域样式 */
+.soql-fixed-section {
+    background: white;
+    border-top: 1px solid #e1e5e9;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+    flex-shrink: 0;
+}
+
+.soql-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e1e5e9;
+}
+
+.soql-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #495057;
+}
+
+.toggle-soql-btn {
+    background: none;
+    border: none;
+    color: #6c757d;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.toggle-soql-btn:hover {
+    background: #e9ecef;
+    color: #495057;
+}
+
+.toggle-soql-btn.collapsed svg {
+    transform: rotate(180deg);
+}
+
+.soql-textarea-container {
+    padding: 0 20px;
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+.soql-textarea-container.collapsed {
+    max-height: 0;
+    padding: 0 20px;
+}
+
+.soql-actions-fixed {
+    padding: 12px 20px;
+    background: #f8f9fa;
+    border-top: 1px solid #e1e5e9;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.soql-fixed-section .soql-textarea {
+    min-height: 100px;
+    max-height: 200px;
+    border: none;
+    border-radius: 0;
+    background: white;
+    margin: 0;
+}
+
 /* 按钮样式 */
 .btn {
     padding: 8px 16px;
@@ -587,6 +786,19 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+
+.btn-large {
+    flex: 1;
+    padding: 10px 16px;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.btn-small {
+    padding: 8px 12px;
+    font-size: 13px;
+    min-width: 80px;
 }
 
 .btn-primary {
@@ -831,7 +1043,7 @@ body {
 /* 响应式设计 */
 @media (max-width: 400px) {
     .main-content {
-        padding: 15px;
+        padding: 10px;
     }
     
     .section {

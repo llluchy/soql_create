@@ -1,15 +1,20 @@
 // SOQL Creator 侧边栏主要逻辑 - 基于 Salesforce Inspector Reloaded 最佳实践
 class SOQLCreator {
+
+    // ========================================
+    // 构造函数
+    // ========================================
     constructor() {
-        this.currentObject = null;
-        this.selectedFields = new Set();
-        this.objects = [];
+        this.currentObject = null; // 当前选中的对象
+        this.selectedFields = new Set(); // 选中的字段
+        this.objects = []; // 对象列表
         this.allObjects = []; // 备份所有对象，用于筛选
-        this.fields = {};
-        this.sfHost = null;
-        
-        // 使用常量类中的标准对象白名单
-        this.standardObjectWhitelist = SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST;
+        this.fields = {}; // 字段列表
+        this.sfHost = null; // Salesforce主机
+        this.environments = new Map(); // 存储所有环境信息
+        this.currentEnvironment = null; // 当前选中的环境
+        this.sessionCache = new Map(); // 权限缓存：存储每个环境的会话状态
+        this.standardObjectWhitelist = SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST; // 使用常量类中的标准对象白名单
         
         this.init();
     }
@@ -19,8 +24,12 @@ class SOQLCreator {
         this.bindMessageEvents();
         this.loadHistory();
         this.checkSalesforcePage();
+        this.initializeEnvironment();
     }
 
+    // ========================================
+    // 绑定事件
+    // ========================================
     bindEvents() {
         // 对象搜索事件
         document.getElementById('objectSearch').addEventListener('input', (e) => {
@@ -32,6 +41,26 @@ class SOQLCreator {
             radio.addEventListener('change', () => {
                 this.filterObjects();
             });
+        });
+
+        // 环境选择器事件
+        document.getElementById('environmentSelect').addEventListener('change', (e) => {
+            this.switchEnvironment(e.target.value);
+        });
+
+        // 刷新环境检测按钮事件
+        document.getElementById('refreshEnvironmentBtn').addEventListener('click', () => {
+            this.refreshEnvironmentDetection();
+        });
+
+        // SOQL区域折叠/展开按钮事件
+        document.getElementById('toggleSoql').addEventListener('click', () => {
+            this.toggleSoqlSection();
+        });
+
+        // 查看SOQL按钮事件
+        document.getElementById('viewSoql').addEventListener('click', () => {
+            this.toggleSoqlSection();
         });
 
         // 刷新对象按钮
@@ -74,33 +103,68 @@ class SOQLCreator {
         document.getElementById('settingsBtn').addEventListener('click', () => {
             this.openSettings();
         });
+
+        // 扩展按钮
+        document.getElementById('expandBtn').addEventListener('click', () => {
+            this.openExpandPage();
+        });
     }
 
 
     // 检查是否在Salesforce页面
     async checkSalesforcePage() {
         try {
-            // 使用新的getSfHost方法获取Salesforce主机
             this.sfHost = await sfConn.getSfHost();
-            
             if (this.sfHost && this.isSalesforceHost(this.sfHost)) {
                 await this.loadObjects();
         } else {
             this.showMessage('请在Salesforce页面使用此插件', 'warning');
             }
         } catch (error) {
-            console.error('SOQL Creator: 检查Salesforce页面失败:', error);
             this.showMessage('无法检测当前页面，请确保在Salesforce页面使用', 'error');
         }
     }
 
-
     // 判断是否为Salesforce主机
     isSalesforceHost(hostname) {
         return hostname.includes('salesforce.com') || 
-               hostname.includes('force.com') ||
-               hostname.includes('cloudforce.com') ||
-               hostname.includes('visualforce.com');
+            hostname.includes('force.com') ||
+            hostname.includes('cloudforce.com') ||
+            hostname.includes('visualforce.com');
+    }
+
+    // 检查权限是否已获取
+    hasValidSession(environmentKey) {
+        const cached = this.sessionCache.get(environmentKey);
+        if (!cached) return false;
+        
+        // 检查缓存是否过期（5分钟）
+        const now = Date.now();
+        const cacheExpiry = 5 * 60 * 1000; // 5分钟
+        return (now - cached.timestamp) < cacheExpiry && cached.sessionId;
+    }
+
+    // 缓存会话信息
+    cacheSession(environmentKey, sessionId) {
+        this.sessionCache.set(environmentKey, {
+            sessionId: sessionId,
+            timestamp: Date.now()
+        });
+    }
+
+    // 清除会话缓存
+    clearSessionCache(environmentKey = null) {
+        if (environmentKey) {
+            this.sessionCache.delete(environmentKey);
+            } else {
+            this.sessionCache.clear();
+        }
+    }
+
+    // 处理会话失效
+    handleSessionExpired(environmentKey) {
+        this.clearSessionCache(environmentKey);
+        this.showMessage('会话已过期，正在重新获取权限...', 'warning');
     }
 
     // 加载Salesforce对象列表
@@ -110,10 +174,28 @@ class SOQLCreator {
             this.showLoadingStatus('正在加载对象列表...', 'objectList');
             this.showMessage('正在加载对象列表...');
             
-            // 获取会话
-            await sfConn.getSession(this.sfHost);
+            // 检查是否已有有效会话
+            const environmentKey = this.currentEnvironment ? this.currentEnvironment.key : this.sfHost;
+            let sessionId = null;
             
-            if (!sfConn.sessionId) {
+            if (this.hasValidSession(environmentKey)) {
+                // 使用缓存的会话
+                const cached = this.sessionCache.get(environmentKey);
+                sessionId = cached.sessionId;
+                sfConn.sessionId = sessionId;
+                sfConn.instanceHostname = this.sfHost;
+            } else {
+                // 获取新会话
+                await sfConn.getSession(this.sfHost);
+                sessionId = sfConn.sessionId;
+                
+                if (sessionId) {
+                    // 缓存会话信息
+                    this.cacheSession(environmentKey, sessionId);
+                }
+            }
+            
+            if (!sessionId) {
                 this.hideLoadingStatus(document.getElementById('objectList'));
                 this.showMessage('无法获取Salesforce会话，请检查登录状态', 'error');
                 return;
@@ -151,8 +233,17 @@ class SOQLCreator {
                 this.populateObjectList();
             }
         } catch (error) {
-            console.error('SOQL Creator: 加载对象失败:', error);
             this.hideLoadingStatus(document.getElementById('objectList'));
+            
+            // 检查是否是会话失效错误
+            if (error.message && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
+                const environmentKey = this.currentEnvironment ? this.currentEnvironment.key : this.sfHost;
+                this.handleSessionExpired(environmentKey);
+                // 重试一次
+                setTimeout(() => this.loadObjects(), 1000);
+                return;
+            }
+            
             ErrorHandler.handle(error, 'loadObjects');
             this.allObjects = [];
             this.objects = [];
@@ -225,17 +316,22 @@ class SOQLCreator {
                 this.populateFieldList();
             }
         } catch (error) {
-            console.error('SOQL Creator: 加载字段失败:', error);
             this.hideLoadingStatus(document.getElementById('fieldList'));
+            
+            // 检查是否是会话失效错误
+            if (error.message && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
+                const environmentKey = this.currentEnvironment ? this.currentEnvironment.key : this.sfHost;
+                this.handleSessionExpired(environmentKey);
+                // 重试一次
+                setTimeout(() => this.loadFields(objectApiName), 1000);
+                return;
+            }
+            
             ErrorHandler.handle(error, 'loadFields');
             this.fields[objectApiName] = {};
             this.populateFieldList();
         }
     }
-
-
-
-
 
     // 填充对象选择下拉框
     populateObjectList() {
@@ -255,9 +351,9 @@ class SOQLCreator {
             
             // 过滤掉Share对象
             if (objectType === 'share') {
-                return false;
-            }
-            
+            return false;
+        }
+        
             // 对于业务对象（包含标准对象和自定义对象），根据设置决定是否启用白名单筛选
             if (objectType === 'business') {
                 const enableFilter = localStorage.getItem('enableStandardObjectFilter') !== 'false';
@@ -265,7 +361,7 @@ class SOQLCreator {
                     // 标准对象需要检查白名单
                     if (obj.name.endsWith('__c')) {
                         // 自定义对象不做限制
-                        return true;
+        return true;
                     } else {
                         // 标准对象必须在白名单中
                         return SOQL_CONSTANTS.isStandardObjectInWhitelist(obj.name);
@@ -290,7 +386,7 @@ class SOQLCreator {
         if (enableFilter) {
             console.log('已过滤掉Share对象和不在白名单中的标准对象');
             console.log('业务对象白名单筛选: 启用（标准对象需在白名单中，自定义对象无限制）');
-        } else {
+                } else {
             console.log('已过滤掉Share对象');
             console.log('业务对象白名单筛选: 禁用');
         }
@@ -525,7 +621,6 @@ class SOQLCreator {
             objectList.appendChild(objectItem);
         });
     }
-
 
     // 填充字段列表
     populateFieldList() {
@@ -788,9 +883,15 @@ class SOQLCreator {
                 this.hideMessage();
             });
         }
-    }
 
-    // 设置手动输入的Session ID
+        // 监听来自background.js的环境变化消息
+        chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+            if (message.action === 'environmentChanged') {
+                console.log('处理环境切换消息');
+                this.handleEnvironmentChange(message.url, message.origin);
+            }
+        });
+    }
 
     // 显示加载状态
     showLoadingStatus(message = '正在加载...', containerId = null) {
@@ -837,12 +938,12 @@ class SOQLCreator {
             this.showMessage('请输入要解析的字段列表', 'warning');
             return;
         }
-
+        
         if (!this.currentObject) {
             this.showMessage('请先选择对象', 'warning');
             return;
         }
-
+        
         try {
             // 解析字段名称
             const fieldNames = this.parseFieldNames(inputText);
@@ -867,7 +968,7 @@ class SOQLCreator {
             const unmatchedCount = fieldNames.length - matchedFields.length;
             if (unmatchedCount > 0) {
                 this.showMessage(`成功选择 ${matchedFields.length} 个字段，${unmatchedCount} 个字段未匹配`, 'success');
-            } else {
+        } else {
                 this.showMessage(`成功选择 ${matchedFields.length} 个字段`, 'success');
             }
 
@@ -998,6 +1099,16 @@ class SOQLCreator {
                                 </div>
                             </div>
                         </div>
+                        <div class="settings-section">
+                            <h4>关于</h4>
+                            <div class="setting-item">
+                                <div class="setting-description">
+                                    <strong>SOQL Creator</strong><br>
+                                    版本：v1.0.0<br>
+                                    一个用于生成Salesforce SOQL查询的Chrome扩展
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1010,6 +1121,14 @@ class SOQLCreator {
 
         // 加载保存的设置
         this.loadSettings(modal);
+    }
+
+    // 打开扩展页面
+    openExpandPage() {
+        // 创建新标签页打开扩展页面
+        chrome.tabs.create({
+            url: chrome.runtime.getURL('expand.html')
+        });
     }
 
     // 绑定设置面板事件
@@ -1031,6 +1150,201 @@ class SOQLCreator {
     // 加载设置
     async loadSettings(modal) {
         // 当前没有需要加载的设置
+    }
+
+    // 初始化环境检测
+    async initializeEnvironment() {
+        try {
+            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (tabs.length > 0 && tabs[0].url) {
+                const url = tabs[0].url;
+                const urlObj = new URL(url);
+                
+                if (this.isSalesforceHost(urlObj.hostname)) {
+                    await this.handleEnvironmentChange(url, urlObj.origin);
+                } else {
+                    this.currentEnvironment = null;
+                    this.sfHost = null;
+                }
+            }
+        } catch (error) {
+            this.showMessage('环境检测失败，请点击刷新按钮重试', 'error');
+        }
+        
+        this.updateEnvironmentSelector();
+    }
+
+    // 环境管理方法
+    async handleEnvironmentChange(url, origin) {
+        const urlObj = new URL(url);
+        const environmentKey = urlObj.host;
+        
+        // 检查是否为有效的Salesforce环境
+        if (!environmentKey.includes('salesforce') && !environmentKey.includes('lightning.force.com')) {
+            return;
+        }
+        
+        // 生成环境显示名称
+        const host = urlObj.host;
+        let environmentName;
+        if (host.includes('my.salesforce.com')) {
+            environmentName = '生产环境';
+        } else if (host.includes('test.salesforce.com')) {
+            environmentName = '测试环境';
+        } else if (host.includes('cs')) {
+            environmentName = '沙盒环境';
+        } else if (host.includes('developer')) {
+            environmentName = '开发环境';
+        } else {
+            const subdomain = host.split('.')[0];
+            environmentName = `${subdomain} 环境`;
+        }
+        
+        // 添加新环境到列表
+        if (!this.environments.has(environmentKey)) {
+            const environmentInfo = {
+                key: environmentKey,
+                host: urlObj.host,
+                origin: origin,
+                name: environmentName,
+                url: url
+            };
+            this.environments.set(environmentKey, environmentInfo);
+        }
+        
+        this.updateEnvironmentSelector();
+        this.selectEnvironment(environmentKey);
+        
+        if (this.currentEnvironment) {
+            this.showMessage(`已切换到 ${this.currentEnvironment.name}`, 'success');
+        }
+    }
+
+    updateEnvironmentSelector() {
+        const select = document.getElementById('environmentSelect');
+        if (!select) return;
+        
+        const currentValue = select.value;
+        select.innerHTML = '<option value="">请选择环境...</option>';
+        
+        this.environments.forEach((env, key) => {
+            const option = document.createElement('option');
+            option.value = key;
+            option.textContent = env.name;
+            select.appendChild(option);
+        });
+        
+        if (this.environments.size === 0) {
+            const option = document.createElement('option');
+            option.value = "no-env";
+            option.textContent = "未检测到Salesforce环境 - 点击刷新按钮重试";
+            option.disabled = true;
+            select.appendChild(option);
+        }
+        
+        if (currentValue && this.environments.has(currentValue)) {
+            select.value = currentValue;
+        }
+    }
+
+    selectEnvironment(environmentKey) {
+        const select = document.getElementById('environmentSelect');
+        if (!select) return;
+        
+        select.value = environmentKey;
+        this.currentEnvironment = this.environments.get(environmentKey);
+        
+        if (this.currentEnvironment) {
+            this.sfHost = this.currentEnvironment.host;
+            // 切换环境时，清除当前对象的字段缓存
+            this.currentObject = null;
+            this.selectedFields.clear();
+            this.fields = {};
+            this.fieldsMap = new Map();
+            this.populateFieldList();
+            this.generateSOQL();
+            this.loadObjects();
+        }
+    }
+
+    async switchEnvironment(environmentKey) {
+        if (!environmentKey) {
+            this.currentEnvironment = null;
+            this.sfHost = null;
+            this.showMessage('已清空环境选择', 'info');
+            return;
+        }
+        
+        const environment = this.environments.get(environmentKey);
+        if (!environment) {
+            this.showMessage('选择的环境不存在', 'error');
+            return;
+        }
+        
+        // 切换环境时，清除当前对象的字段缓存
+        this.currentObject = null;
+        this.selectedFields.clear();
+        this.fields = {};
+        this.fieldsMap = new Map();
+        this.populateFieldList();
+        this.generateSOQL();
+        
+        this.currentEnvironment = environment;
+        this.sfHost = environment.host;
+        
+        this.showMessage(`正在切换到 ${environment.name}...`, 'info');
+        
+        try {
+            await this.loadObjects();
+            this.showMessage(`已切换到 ${environment.name}`, 'success');
+        } catch (error) {
+            this.showMessage(`切换到 ${environment.name} 成功，但加载对象失败`, 'warning');
+        }
+    }
+
+    // 刷新环境检测
+    async refreshEnvironmentDetection() {
+        const refreshBtn = document.getElementById('refreshEnvironmentBtn');
+        if (!refreshBtn) return;
+        
+        refreshBtn.disabled = true;
+        refreshBtn.classList.add('loading');
+        
+        try {
+            this.showMessage('正在刷新环境检测...', 'info');
+            await this.initializeEnvironment();
+            
+            if (this.currentEnvironment) {
+                await this.loadObjects();
+            }
+            
+            this.showMessage('环境检测刷新完成！', 'success');
+        } catch (error) {
+            this.showMessage('环境检测刷新失败', 'error');
+        } finally {
+            refreshBtn.disabled = false;
+            refreshBtn.classList.remove('loading');
+        }
+    }
+
+    // 切换SOQL区域折叠/展开状态
+    toggleSoqlSection() {
+        const toggleBtn = document.getElementById('toggleSoql');
+        const soqlTextareaContainer = document.getElementById('soqlTextareaContainer');
+        
+        if (!toggleBtn || !soqlTextareaContainer) return;
+        
+        const isCollapsed = soqlTextareaContainer.classList.contains('collapsed');
+        
+        if (isCollapsed) {
+            // 展开
+            soqlTextareaContainer.classList.remove('collapsed');
+            toggleBtn.classList.remove('collapsed');
+        } else {
+            // 折叠
+            soqlTextareaContainer.classList.add('collapsed');
+            toggleBtn.classList.add('collapsed');
+        }
     }
 
 }
