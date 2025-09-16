@@ -126,7 +126,6 @@ class SOQLCreator {
         });
     }
 
-
     /**
      * 检查当前页面是否为Salesforce页面
      * 如果是，则自动加载对象列表
@@ -134,17 +133,41 @@ class SOQLCreator {
     async checkSalesforcePage() {
         try {
             // 获取当前页面的Salesforce主机信息
-            this.sfHost = await sfConn.getSfHost();
+            this.sfHost = await this.getSfHost();
             if (this.sfHost && this.isSalesforceHost(this.sfHost)) {
                 // 是Salesforce页面，加载对象列表
                 await this.loadObjects();
         } else {
                 // 不是Salesforce页面，显示提示信息
             this.showMessage('请在Salesforce页面使用此插件', 'warning');
+            console.log('请在Salesforce页面使用此插件');
             }
         } catch (error) {
             // 检测失败，显示错误信息
             this.showMessage('无法检测当前页面，请确保在Salesforce页面使用', 'error');
+            console.log('无法检测当前页面，请确保在Salesforce页面使用');
+        }
+    }
+
+    /**
+     * 获取当前页面的Salesforce主机信息
+     * @returns {string|null} Salesforce主机名或null
+     */
+    async getSfHost() {
+        try {
+            // 获取当前标签页URL
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (!tab || !tab.url) {
+                throw new Error('无法获取当前标签页URL');
+            }
+
+            // 发送消息到后台脚本获取Salesforce主机
+            const sfHost = await new Promise(resolve =>
+                chrome.runtime.sendMessage({message: "getSfHost", url: tab.url}, resolve));
+            
+            return sfHost;
+        } catch (error) {
+            return null;
         }
     }
 
@@ -208,6 +231,7 @@ class SOQLCreator {
     handleSessionExpired(environmentKey) {
         this.clearSessionCache(environmentKey);
         this.showMessage('会话已过期，正在重新获取权限...', 'warning');
+        console.log('会话已过期，正在重新获取权限...');
     }
 
     /**
@@ -219,19 +243,21 @@ class SOQLCreator {
             // 显示加载状态和用户提示
             this.showLoadingStatus('正在加载对象列表...', 'objectList');
             this.showMessage('正在加载对象列表...');
+            console.log('正在加载对象列表...');
+            
             
             // 确定当前环境标识符
             const environmentKey = this.currentEnvironment ? this.currentEnvironment.key : this.sfHost;
             let sessionId = null;
             
-            // 检查是否已有有效的会话缓存
-            if (this.hasValidSession(environmentKey)) {
-                // 使用缓存的会话，避免重复获取权限
-                const cached = this.sessionCache.get(environmentKey);
-                sessionId = cached.sessionId;
-                sfConn.sessionId = sessionId;
-                sfConn.instanceHostname = this.sfHost;
-            } else {
+            // 检查是否已有有效的会话缓存，首次加载对象列表时，一般没有会话缓存
+            // if (this.hasValidSession(environmentKey)) {
+            //     // 使用缓存的会话，避免重复获取权限
+            //     const cached = this.sessionCache.get(environmentKey);
+            //     sessionId = cached.sessionId;
+            //     sfConn.sessionId = sessionId;
+            //     sfConn.instanceHostname = this.sfHost;
+            // } else {
                 // 获取新的会话
                 await sfConn.getSession(this.sfHost);
                 sessionId = sfConn.sessionId;
@@ -240,12 +266,13 @@ class SOQLCreator {
                     // 缓存新获取的会话信息
                     this.cacheSession(environmentKey, sessionId);
                 }
-            }
+            // }
             
             // 验证会话是否获取成功
             if (!sessionId) {
                 this.hideLoadingStatus(document.getElementById('objectList'));
                 this.showMessage('无法获取Salesforce会话，请检查登录状态', 'error');
+                console.log('无法获取Salesforce会话，请检查登录状态');
                 return;
             }
             
@@ -274,10 +301,12 @@ class SOQLCreator {
                 this.hideLoadingStatus(document.getElementById('objectList'));
                 this.populateObjectList();
                 this.showMessage(`成功加载 ${this.allObjects.length} 个对象`, 'success');
+                console.log(`成功加载 ${this.allObjects.length} 个对象`);
             } else {
                 // 没有获取到对象数据
                 this.hideLoadingStatus(document.getElementById('objectList'));
                 this.showMessage('无法获取对象列表，请检查权限', 'error');
+                console.log('无法获取对象列表，请检查权限');
                 this.allObjects = [];
                 this.objects = [];
                 this.populateObjectList();
@@ -311,6 +340,7 @@ class SOQLCreator {
             // 显示加载状态
             this.showLoadingStatus('正在加载字段列表...', 'fieldList');
             this.showMessage('正在加载字段列表...');
+            console.log('正在加载字段列表...');
             
             // 调用Salesforce API获取对象字段描述
             const result = await soqlExecutor.describeSObject(objectApiName);
@@ -366,10 +396,12 @@ class SOQLCreator {
                 this.hideLoadingStatus(document.getElementById('fieldList'));
                 this.populateFieldList();
                 this.showMessage(`成功加载 ${Object.keys(fieldsMap).length} 个字段`, 'success');
+                console.log(`成功加载 ${Object.keys(fieldsMap).length} 个字段`);
             } else {
                 // 没有获取到字段数据
                 this.hideLoadingStatus(document.getElementById('fieldList'));
                 this.showMessage('无法获取字段列表，请检查权限', 'error');
+                console.log('无法获取字段列表，请检查权限');
                 this.fields[objectApiName] = {};
                 this.populateFieldList();
             }
@@ -836,6 +868,7 @@ class SOQLCreator {
         const soqlOutput = document.getElementById('soqlOutput');
         if (!soqlOutput.value.trim()) {
             this.showMessage('没有可复制的SOQL语句');
+            console.log('没有可复制的SOQL语句');
             return;
         }
 
@@ -843,10 +876,12 @@ class SOQLCreator {
             // 使用Clipboard API复制文本
             await navigator.clipboard.writeText(soqlOutput.value);
             this.showMessage('SOQL已复制到剪贴板');
+            console.log('SOQL已复制到剪贴板');
         } catch (error) {
             // 复制失败时的降级处理
             console.error('复制失败:', error);
             this.showMessage('复制失败，请手动复制');
+            console.log('复制失败，请手动复制');
         }
     }
 
@@ -935,6 +970,7 @@ class SOQLCreator {
     loadHistoryItem(historyItem) {
         document.getElementById('soqlOutput').value = historyItem.soql;
         this.showMessage('已加载历史记录');
+        console.log('已加载历史记录');
     }
 
     /**
@@ -959,9 +995,6 @@ class SOQLCreator {
         setTimeout(() => {
             this.hideMessage();
         }, 5000);
-        
-        // 输出到控制台用于调试
-        console.log(`[${type.toUpperCase()}] ${message}`);
     }
 
     /**
@@ -1037,11 +1070,13 @@ class SOQLCreator {
         // 验证输入
         if (!inputText) {
             this.showMessage('请输入要解析的字段列表', 'warning');
+            console.log('请输入要解析的字段列表');
             return;
         }
         
         if (!this.currentObject) {
             this.showMessage('请先选择对象', 'warning');
+            console.log('请先选择对象');
             return;
         }
         
@@ -1051,6 +1086,7 @@ class SOQLCreator {
             
             if (fieldNames.length === 0) {
                 this.showMessage('未找到有效的字段名称', 'warning');
+                console.log('未找到有效的字段名称');
                 return;
             }
 
@@ -1059,6 +1095,7 @@ class SOQLCreator {
             
             if (matchedFields.length === 0) {
                 this.showMessage('未找到匹配的字段', 'warning');
+                console.log('未找到匹配的字段');
                 return;
             }
 
@@ -1069,8 +1106,10 @@ class SOQLCreator {
             const unmatchedCount = fieldNames.length - matchedFields.length;
             if (unmatchedCount > 0) {
                 this.showMessage(`成功选择 ${matchedFields.length} 个字段，${unmatchedCount} 个字段未匹配`, 'success');
+                console.log(`成功选择 ${matchedFields.length} 个字段，${unmatchedCount} 个字段未匹配`);
         } else {
                 this.showMessage(`成功选择 ${matchedFields.length} 个字段`, 'success');
+                console.log(`成功选择 ${matchedFields.length} 个字段`);
             }
 
             // 清空输入框
@@ -1079,6 +1118,7 @@ class SOQLCreator {
         } catch (error) {
             console.error('SOQL Creator: 解析字段失败:', error);
             this.showMessage('解析字段失败，请检查输入格式', 'error');
+            console.log('解析字段失败，请检查输入格式');
         }
     }
 
@@ -1302,6 +1342,7 @@ class SOQLCreator {
             }
         } catch (error) {
             this.showMessage('环境检测失败，请点击刷新按钮重试', 'error');
+            console.log('环境检测失败，请点击刷新按钮重试');
         }
         
         // 更新环境选择器显示
@@ -1351,6 +1392,7 @@ class SOQLCreator {
         
         if (this.currentEnvironment) {
             this.showMessage(`已切换到 ${this.currentEnvironment.name}`, 'success');
+            console.log(`已切换到 ${this.currentEnvironment.name}`);
         }
     }
 
@@ -1406,12 +1448,14 @@ class SOQLCreator {
             this.currentEnvironment = null;
             this.sfHost = null;
             this.showMessage('已清空环境选择', 'info');
+            console.log('已清空环境选择');
             return;
         }
         
         const environment = this.environments.get(environmentKey);
         if (!environment) {
             this.showMessage('选择的环境不存在', 'error');
+            console.log('选择的环境不存在');
             return;
         }
         
@@ -1427,12 +1471,15 @@ class SOQLCreator {
         this.sfHost = environment.host;
         
         this.showMessage(`正在切换到 ${environment.name}...`, 'info');
+        console.log(`正在切换到 ${environment.name}...`);
         
         try {
             await this.loadObjects();
             this.showMessage(`已切换到 ${environment.name}`, 'success');
+            console.log(`已切换到 ${environment.name}`);
         } catch (error) {
             this.showMessage(`切换到 ${environment.name} 成功，但加载对象失败`, 'warning');
+            console.log(`切换到 ${environment.name} 成功，但加载对象失败`);
         }
     }
 
@@ -1446,6 +1493,7 @@ class SOQLCreator {
         
         try {
             this.showMessage('正在刷新环境检测...', 'info');
+            console.log('正在刷新环境检测...');
             await this.initializeEnvironment();
             
             if (this.currentEnvironment) {
@@ -1453,8 +1501,10 @@ class SOQLCreator {
             }
             
             this.showMessage('环境检测刷新完成！', 'success');
+            console.log('环境检测刷新完成！');
         } catch (error) {
             this.showMessage('环境检测刷新失败', 'error');
+            console.log('环境检测刷新失败');
         } finally {
             refreshBtn.disabled = false;
             refreshBtn.classList.remove('loading');
