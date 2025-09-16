@@ -104,18 +104,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true; // 异步响应
     }
     
-<<<<<<< HEAD
-    // 处理会话获取请求
-    if (message.message === "getSession") {
-        sfHost = request.sfHost;
-        chrome.cookies.get({url: "https://" + request.sfHost, name: "sid", storeId: sender.tab.cookieStoreId}, sessionCookie => {
-          if (!sessionCookie) {
-            sendResponse(null);
-            return;
-          }
-          let session = {key: sessionCookie.value, hostname: sessionCookie.domain};
-          sendResponse(session);
-=======
     // // 处理会话获取请求
     // if (message.message === "getSession") {
     //     console.log('处理会话获取请求');
@@ -161,7 +149,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sendResponse(session);
         }).catch(error => {
             sendResponse(null);
->>>>>>> 5c41800a60c7d23211bd3dacc6cebd82b1df5800
         });
         return true; // Tell Chrome that we want to call sendResponse asynchronously.
     }

@@ -534,7 +534,6 @@ class ErrorHandler {
     static showNotification(message, type = "info") {
         if (window.soqlCreator) {
             window.soqlCreator.showMessage(message, type);
-            console.log(message);
         }
     }
 }
