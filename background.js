@@ -104,6 +104,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true; // 异步响应
     }
     
+<<<<<<< HEAD
     // 处理会话获取请求
     if (message.message === "getSession") {
         sfHost = request.sfHost;
@@ -114,10 +115,57 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
           let session = {key: sessionCookie.value, hostname: sessionCookie.domain};
           sendResponse(session);
+=======
+    // // 处理会话获取请求
+    // if (message.message === "getSession") {
+    //     console.log('处理会话获取请求');
+    //     try {
+    //         const sfHost = message.sfHost;
+    //         const cookieStoreId = sender.tab?.cookieStoreId;
+            
+    //         chrome.cookies.get({
+    //             url: "https://" + sfHost,
+    //             name: "sid",
+    //             storeId: cookieStoreId
+    //         }, sessionCookie => {
+    //             if (!sessionCookie) {
+    //                 sendResponse(null);
+    //                 return;
+    //             }
+                
+    //             const session = {
+    //                 key: sessionCookie.value,
+    //                 hostname: sessionCookie.domain
+    //             };
+                
+    //             sendResponse(session);
+    //         });
+    //     } catch (error) {
+    //         sendResponse(null);
+    //     }
+    //     return true; // 异步响应
+    // }
+
+    if (message.message == "getSession") {
+        const sfHost = message.sfHost;
+        chrome.cookies.get({
+            name: "sid",
+            storeId: sender.tab?.cookieStoreId,
+            url: "https://" + sfHost
+        }).then(response => {
+            if (!response) {
+                sendResponse(null);
+                return;
+            }
+            let session = {key: response.value, hostname: response.domain};
+            sendResponse(session);
+        }).catch(error => {
+            sendResponse(null);
+>>>>>>> 5c41800a60c7d23211bd3dacc6cebd82b1df5800
         });
         return true; // Tell Chrome that we want to call sendResponse asynchronously.
     }
-    
+
     // 处理OAuth重定向
     if (message.message === "createWindow") {
         console.log('处理OAuth重定向');
