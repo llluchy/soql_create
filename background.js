@@ -106,32 +106,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     // 处理会话获取请求
     if (message.message === "getSession") {
-        console.log('处理会话获取请求');
-        try {
-            const sfHost = message.sfHost;
-            const cookieStoreId = sender.tab?.cookieStoreId;
-            
-            chrome.cookies.get({
-                url: "https://" + sfHost,
-                name: "sid",
-                storeId: cookieStoreId
-            }, sessionCookie => {
-                if (!sessionCookie) {
-                    sendResponse(null);
-                    return;
-                }
-                
-                const session = {
-                    key: sessionCookie.value,
-                    hostname: sessionCookie.domain
-                };
-                
-                sendResponse(session);
-            });
-        } catch (error) {
+        sfHost = request.sfHost;
+        chrome.cookies.get({url: "https://" + request.sfHost, name: "sid", storeId: sender.tab.cookieStoreId}, sessionCookie => {
+          if (!sessionCookie) {
             sendResponse(null);
-        }
-        return true; // 异步响应
+            return;
+          }
+          let session = {key: sessionCookie.value, hostname: sessionCookie.domain};
+          sendResponse(session);
+        });
+        return true; // Tell Chrome that we want to call sendResponse asynchronously.
     }
     
     // 处理OAuth重定向
@@ -164,7 +148,6 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
         
         if (tab.url) {
             const url = new URL(tab.url);
-            console.log('处理标签页激活事件，发送环境切换消息');
             chrome.runtime.sendMessage({
                 action: 'environmentChanged',
                 url: tab.url,

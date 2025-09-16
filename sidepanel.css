@@ -826,38 +826,6 @@ body {
     font-size: 12px;
 }
 
-/* 查询历史 */
-.history-list {
-    max-height: 150px;
-    overflow-y: auto;
-}
-
-.history-item {
-    background-color: #f8f9fa;
-    border: 1px solid #e9ecef;
-    border-radius: 4px;
-    padding: 10px;
-    margin-bottom: 8px;
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-.history-item:hover {
-    background-color: #e9ecef;
-}
-
-.history-item .history-title {
-    font-weight: 500;
-    margin-bottom: 5px;
-    color: #2c3e50;
-}
-
-.history-item .history-preview {
-    font-size: 12px;
-    color: #6c757d;
-    font-family: monospace;
-}
-
 /* 底部 */
 .footer {
     background-color: #f8f9fa;

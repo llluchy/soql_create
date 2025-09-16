@@ -34,11 +34,16 @@ class SalesforceConnection {
         }
         // 方式3: 从cookie获取会话
         else {
+            console.log('从cookie获取会话，主机:', sfHost);
             let message = await new Promise(resolve =>
                 chrome.runtime.sendMessage({message: "getSession", sfHost}, resolve));
+            console.log('Cookie会话获取结果:', message);
             if (message) {
                 this.instanceHostname = message.hostname;
                 this.sessionId = message.key;
+                console.log('设置会话ID:', this.sessionId ? '已设置' : '未设置');
+                console.log('会话ID内容:', this.sessionId);
+                console.log('会话ID长度:', this.sessionId ? this.sessionId.length : 0);
             }
         }
         
@@ -51,11 +56,6 @@ class SalesforceConnection {
         this.instanceHostname = null;
     }
 
-    // 检查会话是否有效
-    hasValidSession() {
-        return this.sessionId && this.instanceHostname;
-    }
-
     // 获取Salesforce主机 - 基于 Salesforce Inspector Reloaded
     async getSfHost() {
         try {
@@ -66,6 +66,7 @@ class SalesforceConnection {
             }
 
             // 发送消息到后台脚本获取Salesforce主机
+            console.log('发送消息到后台脚本获取Salesforce主机');
             const sfHost = await new Promise(resolve =>
                 chrome.runtime.sendMessage({message: "getSfHost", url: tab.url}, resolve));
             
@@ -101,8 +102,11 @@ class SalesforceConnection {
             // 根据API类型设置认证头
             if (api === "bulk") {
                 xhr.setRequestHeader("X-SFDC-Session", this.sessionId);
+                console.log('设置Bulk API认证头:', this.sessionId);
             } else if (api === "normal") {
-                xhr.setRequestHeader("Authorization", "Bearer " + this.sessionId);
+                const authHeader = "Bearer " + this.sessionId;
+                xhr.setRequestHeader("Authorization", authHeader);
+                console.log('设置Normal API认证头:', authHeader.substring(0, 20) + '...');
             } else {
                 reject(new Error("Unknown api type"));
                 return;
