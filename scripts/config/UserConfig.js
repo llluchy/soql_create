@@ -88,3 +88,6 @@ class UserConfig {
 
 // 创建全局配置实例
 const userConfig = new UserConfig();
+
+// 导出到全局作用域
+window.userConfig = userConfig;

@@ -79,25 +79,10 @@
                         <button class="filter-btn" data-filter="system">系统对象</button>
                     </div>
                     <div class="object-list" id="objectList">
-                        <div class="object-item" data-object="Account" data-type="business">
-                            <span class="object-name">Account</span>
-                            <span class="object-label">客户</span>
-                        </div>
-                        <div class="object-item" data-object="Contact" data-type="business">
-                            <span class="object-name">Contact</span>
-                            <span class="object-label">联系人</span>
-                        </div>
-                        <div class="object-item" data-object="Opportunity" data-type="business">
-                            <span class="object-name">Opportunity</span>
-                            <span class="object-label">商机</span>
-                        </div>
-                        <div class="object-item" data-object="Case" data-type="business">
-                            <span class="object-name">Case</span>
-                            <span class="object-label">案例</span>
-                        </div>
-                        <div class="object-item" data-object="Lead" data-type="business">
-                            <span class="object-name">Lead</span>
-                            <span class="object-label">潜在客户</span>
+                        <div class="empty-state">
+                            <div class="empty-icon">⏳</div>
+                            <div class="empty-title">正在加载对象列表...</div>
+                            <div class="empty-description">请稍候，正在获取Salesforce对象数据</div>
                         </div>
                     </div>
                 </div>
@@ -127,32 +112,10 @@
                         </button>
                     </div>
                     <div class="field-list" id="fieldList">
-                        <div class="field-group">
-                            <div class="group-header">
-                                <span class="group-title">标准字段</span>
-                            </div>
-                            <div class="field-items">
-                                <div class="field-item" data-field="Id">
-                                    <input type="checkbox" class="field-checkbox" checked>
-                                    <span class="field-name">Id</span>
-                                    <span class="field-type">ID</span>
-                                </div>
-                                <div class="field-item" data-field="Name">
-                                    <input type="checkbox" class="field-checkbox" checked>
-                                    <span class="field-name">Name</span>
-                                    <span class="field-type">String</span>
-                                </div>
-                                <div class="field-item" data-field="CreatedDate">
-                                    <input type="checkbox" class="field-checkbox">
-                                    <span class="field-name">CreatedDate</span>
-                                    <span class="field-type">DateTime</span>
-                                </div>
-                                <div class="field-item" data-field="LastModifiedDate">
-                                    <input type="checkbox" class="field-checkbox">
-                                    <span class="field-name">LastModifiedDate</span>
-                                    <span class="field-type">DateTime</span>
-                                </div>
-                            </div>
+                        <div class="empty-state">
+                            <div class="empty-icon">📝</div>
+                            <div class="empty-title">请先选择对象</div>
+                            <div class="empty-description">选择一个对象以查看其字段列表</div>
                         </div>
                     </div>
                     <div class="field-footer">
@@ -225,9 +188,9 @@
     </div>
 
     <!-- 引入脚本 -->
-    <script src="constants.js"></script>
-    <script src="UserConfig.js"></script>
-    <script src="SalesforceConnection.js"></script>
+    <script src="../../scripts/config/constants.js"></script>
+    <script src="../../scripts/config/UserConfig.js"></script>
+    <script src="../../scripts/api/SalesforceConnection.js"></script>
     <script src="expand.js"></script>
 </body>
 </html>

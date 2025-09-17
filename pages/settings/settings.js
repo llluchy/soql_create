@@ -77,147 +77,14 @@ class WhitelistSettingsManager {
         // 使用 constants.js 中定义的标准对象白名单
         const standardObjects = SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST;
         
-        // 为每个对象创建显示信息
+        // 为每个对象创建显示信息，直接使用对象名称作为标签
         return standardObjects.map(objectName => ({
             name: objectName,
-            label: this.getObjectLabel(objectName),
+            label: objectName, // 直接使用对象名称，不再使用硬编码的标签映射
             type: 'standard'
         }));
     }
 
-    // 获取对象的中文标签
-    getObjectLabel(objectName) {
-        const labelMap = {
-            'Account': '客户',
-            'Contact': '联系人',
-            'Opportunity': '商机',
-            'Case': '案例',
-            'Lead': '潜在客户',
-            'Task': '任务',
-            'Event': '事件',
-            'User': '用户',
-            'Campaign': '营销活动',
-            'Product2': '产品',
-            'Pricebook2': '价格手册',
-            'Order': '订单',
-            'Contract': '合同',
-            'Asset': '资产',
-            'Entitlement': '权利',
-            'WorkOrder': '工作订单',
-            'ServiceContract': '服务合同',
-            'Individual': '个人',
-            'ContentVersion': '内容版本',
-            'AsyncApexJob': '异步Apex作业',
-            'Activity': '活动',
-            'AlternativePaymentMethod': '替代付款方式',
-            'ApiAnomalyEventStore': 'API异常事件存储',
-            'ApprovalSubmission': '审批提交',
-            'ApprovalSubmissionDetail': '审批提交详情',
-            'ApprovalWorkItem': '审批工作项',
-            'AssetAction': '资产操作',
-            'AssetActionSource': '资产操作源',
-            'AssetRelationship': '资产关系',
-            'AssetStatePeriod': '资产状态期间',
-            'AssociatedLocation': '关联位置',
-            'AuthorizationForm': '授权表单',
-            'AuthorizationFormConsent': '授权表单同意',
-            'AuthorizationFormDataUse': '授权表单数据使用',
-            'AuthorizationFormText': '授权表单文本',
-            'BusinessBrand': '业务品牌',
-            'CampaignMember': '营销活动成员',
-            'CardPaymentMethod': '卡付款方式',
-            'CaseRelatedIssue': '案例相关问题',
-            'ChangeRequest': '变更请求',
-            'ChangeRequestRelatedItem': '变更请求相关项',
-            'CommSubscription': '通信订阅',
-            'CommSubscriptionChannelType': '通信订阅渠道类型',
-            'CommSubscriptionConsent': '通信订阅同意',
-            'CommSubscriptionTiming': '通信订阅时间',
-            'ConsumptionRate': '消费率',
-            'ConsumptionSchedule': '消费计划',
-            'ContactPointAddress': '联系点地址',
-            'ContactPointConsent': '联系点同意',
-            'ContactPointEmail': '联系点邮箱',
-            'ContactPointPhone': '联系点电话',
-            'ContactPointTypeConsent': '联系点类型同意',
-            'ContactRequest': '联系请求',
-            'ContractLineItem': '合同行项目',
-            'CredentialStuffingEventStore': '凭据填充事件存储',
-            'CreditMemo': '贷项通知单',
-            'CreditMemoInvApplication': '贷项通知单发票应用',
-            'CreditMemoLine': '贷项通知单行',
-            'Customer': '客户',
-            'DandBCompany': 'D&B公司',
-            'DataMaskCustomValueLibrary': '数据掩码自定义值库',
-            'DataUseLegalBasis': '数据使用法律依据',
-            'DataUsePurpose': '数据使用目的',
-            'DigitalWallet': '数字钱包',
-            'DuplicateRecordItem': '重复记录项',
-            'DuplicateRecordSet': '重复记录集',
-            'EmailMessage': '邮件消息',
-            'EngagementChannelType': '参与渠道类型',
-            'EntitlementContact': '权利联系人',
-            'EntityMilestone': '实体里程碑',
-            'FinanceBalanceSnapshot': '财务余额快照',
-            'FinanceTransaction': '财务交易',
-            'FlowOrchestrationInstance': '流程编排实例',
-            'FlowOrchestrationLog': '流程编排日志',
-            'FlowOrchestrationStageInstance': '流程编排阶段实例',
-            'FlowOrchestrationStepInstance': '流程编排步骤实例',
-            'FlowOrchestrationWorkItem': '流程编排工作项',
-            'GuestUserAnomalyEventStore': '访客用户异常事件存储',
-            'Image': '图像',
-            'Incident': '事件',
-            'IncidentRelatedItem': '事件相关项',
-            'Invoice': '发票',
-            'InvoiceLine': '发票行',
-            'LegalEntity': '法律实体',
-            'ListEmail': '列表邮件',
-            'Location': '位置',
-            'LocationGroup': '位置组',
-            'LocationGroupAssignment': '位置组分配',
-            'Macro': '宏',
-            'MessagingEndUser': '消息传递最终用户',
-            'MessagingSession': '消息传递会话',
-            'OpportunityContactRole': '商机联系人角色',
-            'OpportunityLineItem': '商机行项目',
-            'OrderItem': '订单项',
-            'PartyConsent': '参与方同意',
-            'Payment': '付款',
-            'PaymentAuthAdjustment': '付款授权调整',
-            'PaymentAuthorization': '付款授权',
-            'PaymentGateway': '付款网关',
-            'PaymentGroup': '付款组',
-            'PaymentLineInvoice': '付款行发票',
-            'PricebookEntry': '价格手册条目',
-            'PrivacyRTBFRequest': '隐私RTBF请求',
-            'Problem': '问题',
-            'ProblemIncident': '问题事件',
-            'ProblemRelatedItem': '问题相关项',
-            'ProcessException': '流程异常',
-            'ProductConsumptionSchedule': '产品消费计划',
-            'QuickText': '快速文本',
-            'Recommendation': '推荐',
-            'Refund': '退款',
-            'RefundLinePayment': '退款行付款',
-            'ReportAnomalyEventStore': '报告异常事件存储',
-            'Scorecard': '记分卡',
-            'ScorecardAssociation': '记分卡关联',
-            'ScorecardMetric': '记分卡指标',
-            'Seller': '销售员',
-            'SessionHijackingEventStore': '会话劫持事件存储',
-            'SocialPersona': '社交角色',
-            'UserProvisioningRequest': '用户配置请求',
-            'WorkOrderLineItem': '工作订单行项目',
-            'WorkPlan': '工作计划',
-            'WorkPlanTemplate': '工作计划模板',
-            'WorkPlanTemplateEntry': '工作计划模板条目',
-            'WorkStep': '工作步骤',
-            'WorkStepTemplate': '工作步骤模板'
-        };
-        
-        return labelMap[objectName] || objectName;
-    }
 
     // 渲染对象列表
     renderObjectList() {
@@ -287,8 +154,7 @@ class WhitelistSettingsManager {
             // 搜索筛选
             if (this.searchText) {
                 const searchLower = this.searchText.toLowerCase();
-                return obj.name.toLowerCase().includes(searchLower) || 
-                       obj.label.toLowerCase().includes(searchLower);
+                return obj.name.toLowerCase().includes(searchLower);
             }
             
             return true;
@@ -365,12 +231,18 @@ class WhitelistSettingsManager {
 
     // 处理默认打开方式变化
     async handleOpenModeChange(mode) {
+        // 检查是否真的发生了变化
+        if (this.config.defaultOpenMode.mode === mode) {
+            return;
+        }
+        
+        // 直接更新配置
         this.config.defaultOpenMode.mode = mode;
         await this.autoSaveSettings();
-        console.log('默认打开方式已更新:', mode);
         
-        // 显示重启提示
-        this.showMessage('设置已保存！请重启插件以应用新的启动方式。', 'info');
+        // 延迟后重新加载扩展程序
+        chrome.runtime.reload();
+        console.log('扩展程序已重新加载');
     }
 
     // 处理对象切换

@@ -35,9 +35,9 @@
     "https://*.lightning.force.com/*"
   ],
   "side_panel": {
-    "default_path": "sidepanel.html"
+    "default_path": "pages/sidepanel/sidepanel.html"
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background/background.js"
   }
 }

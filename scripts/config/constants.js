@@ -4,7 +4,7 @@
 
 class SOQLCreatorConstants {
     constructor() {
-        // 标准对象白名单 - 只有在此数组中的标准对象才会显示
+        // 【A全表白名单】- 标准对象白名单，只有在此数组中的标准对象才会显示
         this.STANDARD_OBJECT_WHITELIST = [
             'Account', 'AsyncApexJob',
             'Activity', 'AlternativePaymentMethod', 'ApiAnomalyEventStore',
@@ -42,6 +42,21 @@ class SOQLCreatorConstants {
             'WorkStepTemplate'
         ];
 
+        // 【B白名单默认值】- 新用户首次使用时的默认选中对象
+        this.DEFAULT_SELECTED_OBJECTS = [
+            'Account', 'Contact', 'Opportunity', 'Case', 'Lead', 'Task', 'Event', 'User'
+        ];
+
+        // 默认配置结构
+        this.DEFAULT_CONFIG = {
+            objectWhitelist: {
+                allObjects: this.STANDARD_OBJECT_WHITELIST,
+                selectedObjects: this.DEFAULT_SELECTED_OBJECTS
+            },
+            defaultOpenMode: {
+                mode: 'sidepanel'
+            }
+        };
     }
 
     // 检查对象是否在白名单中
@@ -52,3 +67,6 @@ class SOQLCreatorConstants {
 
 // 创建全局常量实例
 const SOQL_CONSTANTS = new SOQLCreatorConstants();
+
+// 导出到全局作用域
+window.SOQL_CONSTANTS = SOQL_CONSTANTS;

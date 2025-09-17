@@ -22,7 +22,7 @@ class SOQLCreator {
         this.currentEnvironment = null; // 当前选中的环境信息
         
         // 权限和会话管理
-        this.sessionCache = new Map(); // 会话缓存，避免重复获取权限
+        // 移除Session缓存，每次都实时获取Session
         
         // 配置和常量
         this.standardObjectWhitelist = SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST; // 标准对象白名单
@@ -358,22 +358,10 @@ class SOQLCreator {
                     this.populateFieldList(); // 填充字段列表
                     this.generateSOQL(); // 生成SOQL
                     
-                    // 在加载对象之前，先获取会话
-                    console.log('checkEnvironment - 开始获取会话');
-                    await sfConn.getSession(this.sfHost);
-                    if (sfConn.sessionId) {
-                        // 缓存会话信息
-                        this.cacheSession(environmentKey, sfConn.sessionId);
-                        console.log('checkEnvironment - 会话获取并缓存成功');
-                    } else {
-                        console.log('checkEnvironment - 会话获取失败');
-                    }
-                    
-                    this.loadObjects(); // 加载对象列表
+                    // 直接加载对象列表，Session将在loadObjects中实时获取
+                    console.log('checkEnvironment - 开始加载对象列表');
+                    await this.loadObjects();
                     this.showMessage(`已加载环境 ${this.currentEnvironment.host}`, 'success');
-                    
-                    // 检查checkEnvironment执行后的sessionCache状态
-                    console.log('checkEnvironment执行完成后的sessionCache:', Array.from(this.sessionCache.entries()));
                 }
             } else {
                 // 没有获取到标签页信息
@@ -410,82 +398,88 @@ class SOQLCreator {
 
 
     // /**
+
+
     /**
-     * 检查指定环境的会话是否有效（未过期）
-     * @param {string} environmentKey - 环境标识符
-     * @returns {boolean} 会话是否有效
+     * 加载Salesforce对象列表的核心逻辑
+     * 不包含会话获取，直接使用已设置的会话
      */
-    hasValidSession(environmentKey) {
-        console.log('检查会话缓存，环境key:', environmentKey);
-        console.log('当前缓存内容:', Array.from(this.sessionCache.entries()));
+    async loadObjectsInternal() {
+        // 调用Salesforce API获取对象列表
+        const result = await soqlExecutor.getSObjects();
         
-        const cached = this.sessionCache.get(environmentKey);
-        console.log('找到的缓存:', cached);
-        
-        if (!cached) {
-            console.log('没有找到缓存，返回false');
-            return false;
+        if (result && result.sobjects && result.sobjects.length > 0) {
+            // 获取用户配置的白名单设置
+            const userConfig = await this.getUserConfig();
+            console.log('完整用户配置:', userConfig);
+            
+            const whitelistConfig = userConfig.objectWhitelist || {
+                allObjects: [],
+                selectedObjects: []
+            };
+            
+            console.log('白名单配置:', whitelistConfig);
+            console.log('标准对象白名单:', SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST);
+            
+            // 过滤和转换对象数据
+            const allObjects = result.sobjects
+                .filter(obj => obj.queryable === true && obj.retrieveable === true) // 只保留可查询的对象
+                .map(obj => ({
+                    name: obj.name,
+                    label: obj.label || obj.name,
+                    apiName: obj.name,
+                    description: obj.description || '',
+                    createable: obj.createable || false,
+                    updateable: obj.updateable || false,
+                    deletable: obj.deletable || false
+                }));
+            
+            // 应用白名单筛选逻辑
+            this.allObjects = allObjects.filter(obj => {
+                // 检查对象是否在标准对象白名单中
+                const isInStandardWhitelist = SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST.includes(obj.name);
+                
+                if (isInStandardWhitelist) {
+                    // 如果在标准对象白名单中，检查是否被用户选中
+                    // 如果selectedObjects为空，表示用户没有设置过白名单，显示所有标准对象
+                    if (whitelistConfig.selectedObjects.length === 0) {
+                        console.log(`标准对象 ${obj.name} 无白名单设置，直接显示`);
+                        return true;
+                    } else {
+                        // 如果设置了白名单，只有选中的才显示
+                        const isSelected = whitelistConfig.selectedObjects.includes(obj.name);
+                        console.log(`标准对象 ${obj.name} 白名单状态:`, isSelected);
+                        return isSelected;
+                    }
+                } else {
+                    // 如果不在标准对象白名单中，不做限制，直接显示
+                    console.log(`非标准对象 ${obj.name} 直接显示`);
+                    return true;
+                }
+            });
+            
+            console.log(`白名单筛选结果: ${this.allObjects.length}/${allObjects.length} 个对象`);
+            
+            // 按标签名称排序
+            this.allObjects.sort((a, b) => (a.label || a.name).localeCompare(b.label || b.name));
+            
+            // 初始化显示列表
+            this.objects = [...this.allObjects];
+            
+            // 更新UI显示
+            this.hideLoadingStatus(document.getElementById('objectList'));
+            this.populateObjectList();
+            this.showMessage(`成功加载 ${this.allObjects.length} 个对象`, 'success');
+            console.log(`成功加载 ${this.allObjects.length} 个对象`);
+        } else {
+            // 没有获取到对象数据
+            this.hideLoadingStatus(document.getElementById('objectList'));
+            this.showMessage('无法获取对象列表，请检查权限', 'error');
+            console.log('无法获取对象列表，请检查权限');
+            this.allObjects = [];
+            this.objects = [];
+            this.populateObjectList();
         }
-        
-        // 检查缓存是否过期（5分钟）
-        const now = Date.now();
-        const cacheExpiry = 5 * 60 * 1000; // 5分钟缓存有效期
-        const isValid = (now - cached.timestamp) < cacheExpiry && cached.sessionId;
-        console.log('缓存有效性检查:', {
-            now: now,
-            timestamp: cached.timestamp,
-            age: now - cached.timestamp,
-            expiry: cacheExpiry,
-            hasSessionId: !!cached.sessionId,
-            isValid: isValid
-        });
-        return isValid;
-    }
-
-    /**
-     * 缓存会话信息到内存中
-     * @param {string} environmentKey - 环境标识符
-     * @param {string} sessionId - 会话ID
-     */
-    cacheSession(environmentKey, sessionId) {
-        console.log('缓存会话，环境key:', environmentKey, '会话ID:', sessionId ? '已设置' : '未设置');
-        console.log('缓存前的sessionCache大小:', this.sessionCache.size);
-        
-        this.sessionCache.set(environmentKey, {
-            sessionId: sessionId,
-            timestamp: Date.now()
-        });
-        
-        console.log('缓存后的sessionCache大小:', this.sessionCache.size);
-        console.log('缓存后的内容:', Array.from(this.sessionCache.entries()));
-        
-        // 验证缓存是否真的被设置
-        const cached = this.sessionCache.get(environmentKey);
-        console.log('验证缓存设置结果:', cached);
-    }
-
-    /**
-     * 清除会话缓存
-     * @param {string|null} environmentKey - 要清除的环境标识符，null表示清除所有
-     */
-    clearSessionCache(environmentKey = null) {
-        if (environmentKey) {
-            // 清除指定环境的缓存
-            this.sessionCache.delete(environmentKey);
-            } else {
-            // 清除所有环境的缓存
-            this.sessionCache.clear();
-        }
-    }
-
-    /**
-     * 处理会话失效情况
-     * @param {string} environmentKey - 失效的环境标识符
-     */
-    handleSessionExpired(environmentKey) {
-        this.clearSessionCache(environmentKey);
-        this.showMessage('会话已过期，正在重新获取权限...', 'warning');
-        console.log('会话已过期，正在重新获取权限...');
     }
 
     /**
@@ -499,86 +493,32 @@ class SOQLCreator {
             this.showMessage('正在加载对象列表...');
             console.log('正在加载对象列表...');
             
-            
-            // 确定当前环境标识符
-            const environmentKey = this.currentEnvironment ? this.currentEnvironment.key : this.sfHost;
-            console.log('loadObjects - 环境标识符:', environmentKey);
             console.log('loadObjects - currentEnvironment:', this.currentEnvironment);
             console.log('loadObjects - sfHost:', this.sfHost);
-            let sessionId = null;
             
-            // 检查是否已有有效的会话缓存，首次加载对象列表时，一般没有会话缓存
-            // if (this.hasValidSession(environmentKey)) {
-            //     // 使用缓存的会话，避免重复获取权限
-            //     const cached = this.sessionCache.get(environmentKey);
-            //     sessionId = cached.sessionId;
-            //     sfConn.sessionId = sessionId;
-            //     sfConn.instanceHostname = this.sfHost;
-            // } else {
-                // 获取新的会话
-                console.log('获取新会话，主机:', this.sfHost);
-                await sfConn.getSession(this.sfHost);
-                sessionId = sfConn.sessionId;
-                console.log('会话获取结果:', sessionId ? '成功' : '失败');
-                
-                if (sessionId) {
-                    // 缓存新获取的会话信息
-                    this.cacheSession(environmentKey, sessionId);
-                }
-            // }
+            // 实时获取Session，不使用缓存
+            console.log('实时获取Session，主机:', this.sfHost);
+            await sfConn.getSession(this.sfHost);
             
-            // 验证会话是否获取成功
-            if (!sessionId) {
+            if (!sfConn.sessionId) {
                 this.hideLoadingStatus(document.getElementById('objectList'));
                 this.showMessage('无法获取Salesforce会话，请检查登录状态', 'error');
                 console.log('无法获取Salesforce会话，请检查登录状态');
                 return;
             }
             
-            // 调用Salesforce API获取对象列表
-            const result = await soqlExecutor.getSObjects();
+            console.log('Session获取成功，开始加载对象');
             
-            if (result && result.sobjects && result.sobjects.length > 0) {
-                // 过滤和转换对象数据
-                this.allObjects = result.sobjects
-                    .filter(obj => obj.queryable === true && obj.retrieveable === true) // 只保留可查询的对象
-                    .sort((a, b) => a.label.localeCompare(b.label)) // 按标签名称排序
-                    .map(obj => ({
-                        name: obj.name,
-                        label: obj.label || obj.name,
-                        apiName: obj.name,
-                        description: obj.description || '',
-                        createable: obj.createable || false,
-                        updateable: obj.updateable || false,
-                        deletable: obj.deletable || false
-                    }));
-                
-                // 初始化显示列表
-                this.objects = [...this.allObjects];
-                
-                // 更新UI显示
-                this.hideLoadingStatus(document.getElementById('objectList'));
-                this.populateObjectList();
-                this.showMessage(`成功加载 ${this.allObjects.length} 个对象`, 'success');
-                console.log(`成功加载 ${this.allObjects.length} 个对象`);
-            } else {
-                // 没有获取到对象数据
-                this.hideLoadingStatus(document.getElementById('objectList'));
-                this.showMessage('无法获取对象列表，请检查权限', 'error');
-                console.log('无法获取对象列表，请检查权限');
-                this.allObjects = [];
-                this.objects = [];
-                this.populateObjectList();
-            }
+            // 使用已设置的会话加载对象
+            await this.loadObjectsInternal();
+            
         } catch (error) {
             this.hideLoadingStatus(document.getElementById('objectList'));
             
             // 检查是否是会话失效错误（401 Unauthorized）
             if (error.message && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
-                const environmentKey = this.currentEnvironment ? this.currentEnvironment.key : this.sfHost;
-                this.handleSessionExpired(environmentKey);
-                // 自动重试一次
-                setTimeout(() => this.loadObjects(), 1000);
+                this.showMessage('会话已过期，请重新登录Salesforce', 'error');
+                console.log('会话已过期，请重新登录Salesforce');
                 return;
             }
             
@@ -1156,7 +1096,7 @@ class SOQLCreator {
      * @param {string} message - 消息内容
      * @param {string} type - 消息类型：'info'|'success'|'warning'|'error'
      */
-    showMessage(message, type = 'info') {
+    showMessage(message, type = 'info', duration = 1000) {
         const messageContainer = document.getElementById('messageContainer');
         const messageContent = document.getElementById('messageContent');
         
@@ -1172,7 +1112,7 @@ class SOQLCreator {
         // 自动隐藏消息（5秒后）
         setTimeout(() => {
             this.hideMessage();
-        }, 5000);
+        }, duration);
     }
 
     /**
@@ -1453,7 +1393,7 @@ class SOQLCreator {
     openExpandPage() {
         // 创建新标签页打开扩展页面
         chrome.tabs.create({
-            url: chrome.runtime.getURL('expand.html')
+            url: chrome.runtime.getURL('pages/expand/expand.html')
         });
     }
 
@@ -1463,7 +1403,7 @@ class SOQLCreator {
     openSettingsPage() {
         // 创建新标签页打开设置页面
         chrome.tabs.create({
-            url: chrome.runtime.getURL('settings.html')
+            url: chrome.runtime.getURL('pages/settings/settings.html')
         });
     }
 
@@ -1484,6 +1424,15 @@ class SOQLCreator {
             console.error('加载用户配置失败:', error);
             // 使用默认配置
             this.userConfig = userConfig.defaultConfig;
+        }
+    }
+
+    async getUserConfig() {
+        try {
+            return await userConfig.getConfig();
+        } catch (error) {
+            console.error('获取用户配置失败:', error);
+            return userConfig.defaultConfig;
         }
     }
 

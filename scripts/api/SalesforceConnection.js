@@ -100,14 +100,11 @@ class SalesforceConnection {
         sfHost = this.getMyDomain(sfHost);
         const ACCESS_TOKEN = "access_token"; // OAuth 回调 URL 中的参数名
         const currentUrlIncludesToken = window.location.href.includes(ACCESS_TOKEN);
-        const oldToken = localStorage.getItem(sfHost + "_" + ACCESS_TOKEN);
         this.instanceHostname = sfHost;
         
         console.log("getSession 调试信息:", {
             sfHost,
-            currentUrlIncludesToken,
-            hasOldToken: !!oldToken,
-            oldTokenLength: oldToken ? oldToken.length : 0
+            currentUrlIncludesToken
         });
         
         if (currentUrlIncludesToken){ // OAuth流程刚完成
@@ -120,19 +117,18 @@ class SalesforceConnection {
                 localStorage.setItem(sfHost + "_" + ACCESS_TOKEN, accessToken);
                 console.log("OAuth流程完成，设置新token");
             }
-        } else if (oldToken) {
-            this.sessionId = oldToken;
-            console.log("使用缓存的token");
         } else {
-            console.log("没有缓存token，通过background获取");
+            // 每次都从background实时获取Session，不使用localStorage缓存
+            console.log("实时从background获取Session");
             let message = await new Promise(resolve =>
                 chrome.runtime.sendMessage({message: "getSession", sfHost}, resolve));
             if (message) {
                 this.instanceHostname = this.getMyDomain(message.hostname);
                 this.sessionId = message.key;
-                console.log("从background获取到token");
+                console.log("从background获取到Session");
             } else {
-                console.log("从background未获取到token");
+                console.log("从background未获取到Session");
+                this.sessionId = null;
             }
         }
         if (localStorage.getItem(sfHost + "_trialExpirationDate") == null) {
@@ -538,15 +534,202 @@ class ErrorHandler {
     }
 }
 
+// 对象管理服务类
+class ObjectService {
+    constructor(sfConn, soqlExecutor) {
+        this.sfConn = sfConn;
+        this.soqlExecutor = soqlExecutor;
+    }
+
+    /**
+     * 获取并筛选对象列表
+     * 统一的对象获取服务，包含白名单筛选逻辑
+     * @param {string} sfHost - Salesforce主机名
+     * @returns {Promise<Array>} 筛选后的对象列表
+     */
+    async getFilteredObjects(sfHost) {
+        try {
+            // 1. 设置Salesforce连接信息
+            this.sfConn.instanceHostname = sfHost;
+            
+            // 2. 实时获取Session
+            console.log('ObjectService: 实时获取Session for host:', sfHost);
+            await this.sfConn.getSession(sfHost);
+            
+            if (!this.sfConn.sessionId) {
+                throw new Error('无法获取有效的Salesforce会话，请检查登录状态');
+            }
+            
+            console.log('ObjectService: Session获取成功，开始调用API');
+            
+            // 3. 调用Salesforce API获取对象列表
+            const result = await this.soqlExecutor.getSObjects();
+            
+            if (!result || !result.sobjects || result.sobjects.length === 0) {
+                return [];
+            }
+            
+            // 4. 获取用户配置的白名单设置
+            const userConfig = await this.getUserConfig();
+            const whitelistConfig = userConfig.objectWhitelist || {
+                allObjects: [],
+                selectedObjects: []
+            };
+            
+            console.log('ObjectService: 白名单配置:', whitelistConfig);
+            
+            // 5. 过滤可查询的对象
+            const allObjects = result.sobjects
+                .filter(obj => obj.queryable === true && obj.retrieveable === true)
+                .map(obj => ({
+                    name: obj.name,
+                    label: obj.label || obj.name,
+                    apiName: obj.name,
+                    description: obj.description || '',
+                    createable: obj.createable || false,
+                    updateable: obj.updateable || false,
+                    deletable: obj.deletable || false,
+                    type: this.classifyObjectType(obj.name)
+                }));
+            
+            // 6. 应用白名单筛选逻辑
+            const filteredObjects = allObjects.filter(obj => {
+                // 检查对象是否在标准对象白名单中
+                const isInStandardWhitelist = SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST.includes(obj.name);
+                
+                if (isInStandardWhitelist) {
+                    // 如果在标准对象白名单中，检查是否被用户选中
+                    // 如果selectedObjects为空，表示用户没有设置过白名单，显示所有标准对象
+                    if (whitelistConfig.selectedObjects.length === 0) {
+                        console.log(`ObjectService: 标准对象 ${obj.name} 无白名单设置，直接显示`);
+                        return true;
+                    } else {
+                        // 如果设置了白名单，只有选中的才显示
+                        const isSelected = whitelistConfig.selectedObjects.includes(obj.name);
+                        console.log(`ObjectService: 标准对象 ${obj.name} 白名单状态:`, isSelected);
+                        return isSelected;
+                    }
+                } else {
+                    // 如果不在标准对象白名单中，不做限制，直接显示
+                    console.log(`ObjectService: 非标准对象 ${obj.name} 直接显示`);
+                    return true;
+                }
+            });
+            
+            console.log(`ObjectService: 白名单筛选结果: ${filteredObjects.length}/${allObjects.length} 个对象`);
+            
+            // 7. 按标签排序
+            return filteredObjects.sort((a, b) => (a.label || a.name).localeCompare(b.label || b.name));
+            
+        } catch (error) {
+            console.error('ObjectService: 获取对象列表失败:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * 获取用户配置
+     * @returns {Promise<Object>} 用户配置对象
+     */
+    async getUserConfig() {
+        try {
+            const result = await chrome.storage.sync.get(Object.keys(SOQL_CONSTANTS.DEFAULT_CONFIG));
+            // 合并默认配置
+            return { ...SOQL_CONSTANTS.DEFAULT_CONFIG, ...result };
+        } catch (error) {
+            console.error('ObjectService: 获取用户配置失败:', error);
+            return SOQL_CONSTANTS.DEFAULT_CONFIG;
+        }
+    }
+
+    /**
+     * 分类对象类型
+     * @param {string} objectName - 对象名称
+     * @returns {string} 对象类型
+     */
+    classifyObjectType(objectName) {
+        // 业务对象：常见的业务实体
+        const businessObjects = [
+            'Account', 'Contact', 'Opportunity', 'Case', 'Lead', 'Task', 'Event',
+            'Campaign', 'Product2', 'Pricebook2', 'Order', 'Contract', 'Asset',
+            'Entitlement', 'WorkOrder', 'ServiceContract', 'Individual'
+        ];
+        
+        // 元数据对象：配置和元数据相关
+        const metadataObjects = [
+            'User', 'Profile', 'PermissionSet', 'Role', 'Group', 'Queue',
+            'CustomObject', 'CustomField', 'ValidationRule', 'WorkflowRule',
+            'ProcessBuilder', 'Flow', 'ApexClass', 'ApexTrigger', 'ApexPage'
+        ];
+        
+        // 系统对象：系统内部对象
+        const systemObjects = [
+            'AsyncApexJob', 'ApexLog', 'CronTrigger', 'CronJobDetail',
+            'SetupAuditTrail', 'LoginHistory', 'UserLogin', 'SessionPermSetActivation'
+        ];
+
+        if (businessObjects.includes(objectName)) {
+            return 'business';
+        } else if (metadataObjects.includes(objectName)) {
+            return 'metadata';
+        } else if (systemObjects.includes(objectName) || objectName.startsWith('__')) {
+            return 'system';
+        } else if (objectName.endsWith('__c')) {
+            return 'business'; // 自定义对象归类为业务对象
+        } else {
+            return 'business'; // 默认为业务对象
+        }
+    }
+
+    /**
+     * 初始化用户白名单配置
+     * 首次使用时，将硬编码的默认值保存到云配置
+     * @returns {Promise<boolean>} 是否成功初始化
+     */
+    async initializeUserWhitelist() {
+        try {
+            const currentConfig = await this.getUserConfig();
+            
+            // 检查是否已经初始化过
+            if (currentConfig.objectWhitelist && 
+                currentConfig.objectWhitelist.selectedObjects && 
+                currentConfig.objectWhitelist.selectedObjects.length > 0) {
+                console.log('ObjectService: 用户白名单已初始化，跳过');
+                return true;
+            }
+            
+            // 使用硬编码的默认值初始化
+            const whitelistConfig = {
+                allObjects: SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST,
+                selectedObjects: SOQL_CONSTANTS.DEFAULT_SELECTED_OBJECTS
+            };
+            
+            // 直接保存到云配置
+            await chrome.storage.sync.set({
+                objectWhitelist: whitelistConfig
+            });
+            
+            console.log('ObjectService: 用户白名单初始化完成:', whitelistConfig);
+            return true;
+            
+        } catch (error) {
+            console.error('ObjectService: 初始化用户白名单失败:', error);
+            return false;
+        }
+    }
+}
+
 // 创建全局实例
 const sfConn = new SalesforceConnection();
 const soqlExecutor = new SOQLExecutor(sfConn);
 const oauthManager = new OAuthManager();
+const objectService = new ObjectService(sfConn, soqlExecutor);
 
 // 导出到全局作用域
 window.sfConn = sfConn;
 window.soqlExecutor = soqlExecutor;
 window.oauthManager = oauthManager;
+window.objectService = objectService;
 window.ErrorHandler = ErrorHandler;
 window.apiVersion = apiVersion;
 window.sessionError = sessionError;

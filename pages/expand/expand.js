@@ -20,17 +20,21 @@ class SOQLCreator {
         // 加载用户配置
         await this.loadUserConfig();
         
-        // 加载可用环境列表
-        await this.loadAvailableEnvironments();
-        
         // 绑定事件
         this.bindEvents();
         
         // 初始化界面
         this.initializeUI();
         
-        // 加载对象列表
-        await this.loadObjects();
+        // 加载可用环境列表
+        await this.loadAvailableEnvironments();
+        
+        // 如果有环境，自动加载对象列表
+        if (this.availableEnvironments.length > 0) {
+            await this.loadObjects();
+        } else {
+            this.showObjectListError('未找到可用的Salesforce环境，请先打开Salesforce标签页');
+        }
     }
 
     // ========================================
@@ -43,6 +47,15 @@ class SOQLCreator {
         } catch (error) {
             console.error('加载用户配置失败:', error);
             this.userConfig = userConfig.defaultConfig;
+        }
+    }
+
+    async getUserConfig() {
+        try {
+            return await userConfig.getConfig();
+        } catch (error) {
+            console.error('获取用户配置失败:', error);
+            return userConfig.defaultConfig;
         }
     }
 
@@ -62,11 +75,14 @@ class SOQLCreator {
             // 如果有环境，选择第一个
             if (this.availableEnvironments.length > 0) {
                 this.selectEnvironment(this.availableEnvironments[0]);
+            } else {
+                this.showObjectListError('未找到可用的Salesforce环境，请先打开Salesforce标签页');
             }
             
         } catch (error) {
             console.error('从 Session 加载环境列表失败:', error);
             this.availableEnvironments = [];
+            this.showObjectListError('加载环境列表失败: ' + error.message);
         }
     }
 
@@ -92,18 +108,14 @@ class SOQLCreator {
                     if (host && !seenHosts.has(host)) {
                         seenHosts.add(host);
                         
-                        // 获取该标签页的 Session 信息
-                        const sessionInfo = await this.getSessionFromTab(tab.id);
-                        
-                        if (sessionInfo) {
-                            environments.push({
-                                name: this.generateEnvironmentName(host, sessionInfo),
-                                host: host,
-                                type: this.detectEnvironmentType(host, sessionInfo),
-                                tabId: tab.id,
-                                sessionInfo: sessionInfo
-                            });
-                        }
+                        // 不再获取Session信息，只记录环境基本信息
+                        // Session将在实际使用时实时获取
+                        environments.push({
+                            name: this.generateEnvironmentName(host),
+                            host: host,
+                            type: this.detectEnvironmentType(host),
+                            tabId: tab.id
+                        });
                     }
                 } catch (error) {
                     console.warn(`处理标签页 ${tab.id} 时出错:`, error);
@@ -112,7 +124,7 @@ class SOQLCreator {
 
             return environments;
         } catch (error) {
-            console.error('从 Session 获取环境失败:', error);
+            console.error('获取环境失败:', error);
             return [];
         }
     }
@@ -126,40 +138,9 @@ class SOQLCreator {
         }
     }
 
-    async getSessionFromTab(tabId) {
-        try {
-            // 通过消息传递获取标签页的 Session 信息
-            const response = await chrome.tabs.sendMessage(tabId, { 
-                action: 'getSessionInfo' 
-            });
-            return response;
-        } catch (error) {
-            // 如果无法获取 Session，尝试从 cookies 获取
-            try {
-                const cookies = await chrome.cookies.getAll({ 
-                    domain: this.extractHostFromUrl(await chrome.tabs.get(tabId).then(tab => tab.url))
-                });
-                
-                const sessionCookie = cookies.find(cookie => 
-                    cookie.name === 'sid' || cookie.name === 'sessionId'
-                );
-                
-                if (sessionCookie) {
-                    return {
-                        sessionId: sessionCookie.value,
-                        domain: sessionCookie.domain
-                    };
-                }
-            } catch (cookieError) {
-                console.warn('无法从 cookies 获取 Session:', cookieError);
-            }
-            
-            return null;
-        }
-    }
 
-    generateEnvironmentName(host, sessionInfo) {
-        // 根据主机名和 Session 信息生成环境名称
+    generateEnvironmentName(host) {
+        // 根据主机名生成环境名称
         
         // 处理 Salesforce 沙盒环境格式: company--username.sandbox.lightning.force.com
         if (host.includes('.sandbox.lightning.force.com')) {
@@ -202,7 +183,7 @@ class SOQLCreator {
         return host;
     }
 
-    detectEnvironmentType(host, sessionInfo) {
+    detectEnvironmentType(host) {
         // 检测环境类型
         
         // Salesforce 沙盒环境
@@ -284,54 +265,117 @@ class SOQLCreator {
     async loadObjects() {
         try {
             const objectList = document.getElementById('objectList');
-            const objects = await this.fetchObjects();
             
-            // 渲染对象列表
-            this.renderObjectList(objects, objectList);
+            // 检查是否有选中的环境
+            if (!this.selectedEnvironment) {
+                this.showObjectListError('请先选择一个Salesforce环境');
+                return;
+            }
+            
+            // 显示加载状态
+            this.showObjectListLoading();
+            
+            // 获取真实的Salesforce对象数据
+            const objects = await this.fetchObjectsFromSalesforce();
+            
+            console.log(`loadObjects: 获取到 ${objects ? objects.length : 0} 个对象`);
+            
+            if (objects && objects.length > 0) {
+                // 渲染对象列表
+                this.renderObjectList(objects, objectList);
+                this.showMessage(`成功加载 ${objects.length} 个对象`, 'success');
+            } else {
+                this.showObjectListError('未找到可查询的对象');
+            }
             
         } catch (error) {
             console.error('加载对象列表失败:', error);
-            this.showError('加载对象列表失败');
+            this.showObjectListError('加载对象列表失败: ' + error.message);
         }
     }
 
-    async fetchObjects() {
-        // 使用 constants.js 中的标准对象列表
-        const standardObjects = SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST;
-        
-        return standardObjects.map(objectName => ({
-            name: objectName,
-            label: this.getObjectLabel(objectName),
-            type: 'standard'
-        }));
+    async fetchObjectsFromSalesforce() {
+        try {
+            // 设置Salesforce连接信息
+            sfConn.instanceHostname = this.sfHost;
+            
+            // 实时获取Session，不使用缓存的Session
+            console.log('实时获取Session for host:', this.sfHost);
+            await sfConn.getSession(this.sfHost);
+            
+            if (!sfConn.sessionId) {
+                throw new Error('无法获取有效的Salesforce会话，请检查登录状态');
+            }
+            
+            console.log('Session获取成功，开始调用API');
+            
+            // 调用Salesforce API获取对象列表
+            const result = await soqlExecutor.getSObjects();
+            
+            if (result && result.sobjects && result.sobjects.length > 0) {
+                // 获取用户配置的白名单设置
+                const userConfig = await this.getUserConfig();
+                console.log('完整用户配置:', userConfig);
+                
+                const whitelistConfig = userConfig.objectWhitelist || {
+                    allObjects: [],
+                    selectedObjects: []
+                };
+                
+                console.log('白名单配置:', whitelistConfig);
+                console.log('标准对象白名单:', SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST);
+                
+                // 过滤可查询的对象
+                const allObjects = result.sobjects
+                    .filter(obj => obj.queryable === true && obj.retrieveable === true)
+                    .map(obj => ({
+                        name: obj.name,
+                        label: obj.label || obj.name, // 使用API返回的真实标签
+                        apiName: obj.name,
+                        description: obj.description || '',
+                        createable: obj.createable || false,
+                        updateable: obj.updateable || false,
+                        deletable: obj.deletable || false,
+                        type: this.classifyObjectType(obj.name)
+                    }));
+                
+                // 应用白名单筛选逻辑
+                const filteredObjects = allObjects.filter(obj => {
+                    // 检查对象是否在标准对象白名单中
+                    const isInStandardWhitelist = SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST.includes(obj.name);
+                    
+                    if (isInStandardWhitelist) {
+                        // 如果在标准对象白名单中，检查是否被用户选中
+                        // 如果selectedObjects为空，表示用户没有设置过白名单，显示所有标准对象
+                        if (whitelistConfig.selectedObjects.length === 0) {
+                            console.log(`标准对象 ${obj.name} 无白名单设置，直接显示`);
+                            return true;
+                        } else {
+                            // 如果设置了白名单，只有选中的才显示
+                            const isSelected = whitelistConfig.selectedObjects.includes(obj.name);
+                            console.log(`标准对象 ${obj.name} 白名单状态:`, isSelected);
+                            return isSelected;
+                        }
+                    } else {
+                        // 如果不在标准对象白名单中，不做限制，直接显示
+                        console.log(`非标准对象 ${obj.name} 直接显示`);
+                        return true;
+                    }
+                });
+                
+                console.log(`白名单筛选结果: ${filteredObjects.length}/${allObjects.length} 个对象`);
+                
+                // 按标签排序
+                return filteredObjects.sort((a, b) => (a.label || a.name).localeCompare(b.label || b.name));
+            }
+            
+            return [];
+        } catch (error) {
+            console.error('从Salesforce获取对象失败:', error);
+            throw error;
+        }
     }
 
-    getObjectLabel(objectName) {
-        const labelMap = {
-            'Account': '客户',
-            'Contact': '联系人',
-            'Opportunity': '商机',
-            'Case': '案例',
-            'Lead': '潜在客户',
-            'Task': '任务',
-            'Event': '事件',
-            'User': '用户',
-            'Campaign': '营销活动',
-            'Product2': '产品',
-            'Pricebook2': '价格手册',
-            'Order': '订单',
-            'Contract': '合同',
-            'Asset': '资产',
-            'Entitlement': '权利',
-            'WorkOrder': '工作订单',
-            'ServiceContract': '服务合同',
-            'Individual': '个人',
-            'ContentVersion': '内容版本',
-            'AsyncApexJob': '异步Apex作业'
-        };
-        
-        return labelMap[objectName] || objectName;
-    }
 
     classifyObjectType(objectName) {
         // 业务对象：常见的业务实体
@@ -371,12 +415,14 @@ class SOQLCreator {
         // 清空现有内容
         container.innerHTML = '';
         
+        console.log(`renderObjectList: 准备渲染 ${objects.length} 个对象`);
+        
         // 渲染对象列表
         objects.forEach(obj => {
             const objectElement = document.createElement('div');
             objectElement.className = 'object-item';
             objectElement.dataset.object = obj.name;
-            objectElement.dataset.type = this.classifyObjectType(obj.name);
+            objectElement.dataset.type = obj.type;
             
             objectElement.innerHTML = `
                 <span class="object-name">${obj.name}</span>
@@ -385,6 +431,28 @@ class SOQLCreator {
             
             container.appendChild(objectElement);
         });
+    }
+
+    showObjectListLoading() {
+        const objectList = document.getElementById('objectList');
+        objectList.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">⏳</div>
+                <div class="empty-title">正在加载对象列表...</div>
+                <div class="empty-description">请稍候，正在获取Salesforce对象数据</div>
+            </div>
+        `;
+    }
+
+    showObjectListError(message) {
+        const objectList = document.getElementById('objectList');
+        objectList.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">❌</div>
+                <div class="empty-title">加载失败</div>
+                <div class="empty-description">${message}</div>
+            </div>
+        `;
     }
 
     getObjectIcon(objectName) {
@@ -721,8 +789,8 @@ class SOQLCreator {
             this.generateSOQL();
         });
 
-        document.getElementById('refreshObjects').addEventListener('click', () => {
-            this.loadObjects();
+        document.getElementById('refreshObjects').addEventListener('click', async () => {
+            await this.loadObjects();
         });
 
         document.getElementById('exportResultBtn').addEventListener('click', () => {
@@ -747,7 +815,7 @@ class SOQLCreator {
     // ========================================
     // 事件处理
     // ========================================
-    handleEnvironmentChange(e) {
+    async handleEnvironmentChange(e) {
         const selectedHost = e.target.value;
         
         if (!selectedHost) {
@@ -755,6 +823,7 @@ class SOQLCreator {
             this.selectedEnvironment = null;
             this.sfHost = null;
             this.updateConnectionInfo();
+            this.showObjectListError('请先选择一个Salesforce环境');
             this.showMessage('请选择一个环境', 'warning');
             return;
         }
@@ -767,9 +836,10 @@ class SOQLCreator {
             this.showMessage(`已切换到环境: ${environment.name || environment.host}`, 'success');
             
             // 重新加载对象列表（因为环境变了）
-            this.loadObjects();
+            await this.loadObjects();
         } else {
             this.showMessage('环境信息无效', 'error');
+            this.showObjectListError('环境信息无效');
         }
     }
 
@@ -1272,6 +1342,12 @@ class SOQLCreator {
         try {
             this.showMessage('正在刷新环境列表...', 'info');
             await this.loadAvailableEnvironments();
+            
+            // 如果有环境，重新加载对象列表
+            if (this.availableEnvironments.length > 0) {
+                await this.loadObjects();
+            }
+            
             this.showMessage('环境列表已刷新', 'success');
         } catch (error) {
             console.error('刷新环境列表失败:', error);
@@ -1298,7 +1374,7 @@ class SOQLCreator {
     openSettings() {
         // 打开设置页面
         chrome.tabs.create({
-            url: chrome.runtime.getURL('settings.html')
+            url: chrome.runtime.getURL('/pages/settings/settings.html')
         });
     }
 }
@@ -1307,3 +1383,4 @@ class SOQLCreator {
 document.addEventListener('DOMContentLoaded', () => {
     new SOQLCreator();
 });
+

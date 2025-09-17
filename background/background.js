@@ -29,7 +29,7 @@ chrome.action.onClicked.addListener(async (tab) => {
         if (defaultMode === 'tab') {
             // 打开标签页
             chrome.tabs.create({
-                url: chrome.runtime.getURL('expand.html')
+                url: chrome.runtime.getURL('pages/expand/expand.html')
             });
             console.log('已打开标签页');
         }

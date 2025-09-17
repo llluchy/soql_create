@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SOQL Creator - 对象黑名单设置</title>
-    <link rel="stylesheet" href="sidepanel.css">
+    <link rel="stylesheet" href="../sidepanel/sidepanel.css">
     <style>
         .settings-container {
             max-width: 1000px;
@@ -210,58 +210,51 @@
         }
         
         /* 默认打开方式设置样式 */
-        .open-mode-options {
+        .open-mode-simple {
             display: flex;
-            gap: 20px;
+            gap: 10px;
             margin-top: 15px;
         }
         
-        .mode-option {
+        .mode-radio {
             flex: 1;
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            border: 1px solid #e1e5e9;
+            border-radius: 4px;
             cursor: pointer;
-        }
-        
-        .mode-option input[type="radio"] {
-            display: none;
-        }
-        
-        .mode-card {
-            border: 2px solid #e1e5e9;
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-            transition: all 0.3s ease;
+            transition: all 0.2s ease;
             background: white;
+            text-align: center;
+            justify-content: center;
         }
         
-        .mode-option input[type="radio"]:checked + .mode-card {
+        .mode-radio:hover {
             border-color: #0070d2;
             background: #f8f9ff;
-            box-shadow: 0 2px 8px rgba(0, 112, 210, 0.15);
         }
         
-        .mode-option:hover .mode-card {
-            border-color: #0070d2;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 112, 210, 0.1);
+        .mode-radio input[type="radio"] {
+            margin-right: 8px;
+            transform: scale(1.1);
         }
         
-        .mode-icon {
-            font-size: 32px;
-            margin-bottom: 10px;
-        }
-        
-        .mode-title {
-            font-size: 16px;
+        .mode-radio input[type="radio"]:checked + .radio-label {
+            color: #0070d2;
             font-weight: 600;
-            color: #333;
-            margin-bottom: 5px;
         }
         
-        .mode-description {
-            font-size: 12px;
-            color: #666;
-            line-height: 1.4;
+        .mode-radio:has(input[type="radio"]:checked) {
+            border-color: #0070d2;
+            background: #f8f9ff;
+            box-shadow: 0 1px 3px rgba(0, 112, 210, 0.1);
+        }
+        
+        .radio-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #333;
         }
     </style>
 </head>
@@ -279,26 +272,18 @@
             <h3>默认打开方式</h3>
             <div class="blacklist-description">
                 <span class="icon">ℹ️</span>
-                <strong>说明：</strong>设置插件的默认打开方式
+                <strong>说明：</strong>设置插件的默认打开方式。切换后插件会立刻重启以应用新的启动方式。
             </div>
             
-            <div class="open-mode-options">
-                <label class="mode-option">
+            <div class="open-mode-simple">
+                <label class="mode-radio">
                     <input type="radio" name="defaultOpenMode" value="sidepanel" checked>
-                    <div class="mode-card">
-                        <div class="mode-icon">📱</div>
-                        <div class="mode-title">侧边栏</div>
-                        <div class="mode-description">简单功能，快速访问</div>
-                    </div>
+                    <span class="radio-label">侧边栏</span>
                 </label>
                 
-                <label class="mode-option">
+                <label class="mode-radio">
                     <input type="radio" name="defaultOpenMode" value="tab">
-                    <div class="mode-card">
-                        <div class="mode-icon">🖥️</div>
-                        <div class="mode-title">标签页</div>
-                        <div class="mode-description">完整功能，更多选项</div>
-                    </div>
+                    <span class="radio-label">标签页</span>
                 </label>
             </div>
         </div>
@@ -349,8 +334,8 @@
         </div>
     </div>
 
-    <script src="constants.js"></script>
-    <script src="UserConfig.js"></script>
+    <script src="../../scripts/config/constants.js"></script>
+    <script src="../../scripts/config/UserConfig.js"></script>
     <script src="settings.js"></script>
 </body>
 </html>
