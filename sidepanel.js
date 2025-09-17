@@ -26,6 +26,7 @@ class SOQLCreator {
         
         // 配置和常量
         this.standardObjectWhitelist = SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST; // 标准对象白名单
+        this.userConfig = null; // 用户配置对象
         
         // 初始化应用
         this.init();
@@ -35,7 +36,8 @@ class SOQLCreator {
      * 初始化应用
      * 按顺序执行所有初始化步骤
      */
-    init() {
+    async init() {
+        await this.loadUserConfig(); // 加载用户配置
         this.bindEvents(); // 绑定DOM事件监听器
         this.firstTimeGetObjects(); // 检查当前页面是否为Salesforce页面
     }
@@ -49,9 +51,9 @@ class SOQLCreator {
             this.openExpandPage();
         });
 
-        // 设置按钮 - 打开设置面板
+        // 设置按钮 - 打开设置页面
         document.getElementById('settingsBtn').addEventListener('click', () => {
-            this.openSettings();
+            this.openSettingsPage();
         });
 
         // 环境选择器事件
@@ -114,6 +116,11 @@ class SOQLCreator {
         // 查看SOQL按钮 - 与折叠按钮功能相同
         document.getElementById('viewSoql').addEventListener('click', () => {
             this.toggleSoqlSection();
+        });
+
+        // 消息关闭按钮
+        document.getElementById('closeMessage').addEventListener('click', () => {
+            this.hideMessage();
         });
 
     }
@@ -852,18 +859,17 @@ class SOQLCreator {
         return 'business';
     }
 
+
     /**
-     * 获取对象类型的中文标签
-     * @param {string} type - 对象类型
-     * @returns {string} 中文标签
+     * 检查对象是否在白名单中（包括选中的和未选中的）
+     * @param {string} objectName - 对象名称
+     * @returns {boolean} 是否在白名单中
      */
-    getObjectTypeLabel(type) {
-        const typeLabels = {
-            'business': '业务对象',
-            'metadata': '元数据',
-            'system': '系统'
-        };
-        return typeLabels[type] || '未知';
+    isObjectInWhitelist(objectName) {
+        if (this.userConfig && this.userConfig.objectWhitelist && this.userConfig.objectWhitelist.allObjects) {
+            return this.userConfig.objectWhitelist.allObjects.includes(objectName);
+        }
+        return false;
     }
 
     // 过滤对象列表
@@ -889,6 +895,17 @@ class SOQLCreator {
             if (objectType === 'share') {
                 return false;
             }
+            
+            // 应用白名单过滤
+            if (this.userConfig && this.userConfig.objectWhitelist) {
+                // 检查对象是否在白名单中（包括选中的和未选中的）
+                const isInWhitelist = this.isObjectInWhitelist(obj.name);
+                if (isInWhitelist) {
+                    // 在白名单中，只有选中的才显示
+                    return this.userConfig.objectWhitelist.selectedObjects.includes(obj.name);
+                }
+            }
+            // 白名单以外的对象正常显示
             
             // 对于业务对象（包含标准对象和自定义对象），根据设置决定是否启用白名单筛选
             if (objectType === 'business') {
@@ -1438,6 +1455,86 @@ class SOQLCreator {
         chrome.tabs.create({
             url: chrome.runtime.getURL('expand.html')
         });
+    }
+
+    /**
+     * 打开设置页面
+     */
+    openSettingsPage() {
+        // 创建新标签页打开设置页面
+        chrome.tabs.create({
+            url: chrome.runtime.getURL('settings.html')
+        });
+    }
+
+    /**
+     * 加载用户配置
+     */
+    async loadUserConfig() {
+        try {
+            this.userConfig = await userConfig.getConfig();
+            console.log('用户配置已加载:', this.userConfig);
+            
+            // 应用配置到界面
+            this.applyUserConfig();
+            
+            // 监听配置变化
+            this.setupConfigListener();
+        } catch (error) {
+            console.error('加载用户配置失败:', error);
+            // 使用默认配置
+            this.userConfig = userConfig.defaultConfig;
+        }
+    }
+
+    /**
+     * 应用用户配置到界面
+     */
+    applyUserConfig() {
+        if (!this.userConfig) return;
+
+        // 应用调试模式
+        if (this.userConfig.enableDebugMode) {
+            console.log('调试模式已启用');
+        }
+
+        // 如果对象列表已加载，重新过滤以应用新的白名单设置
+        if (this.allObjects && this.allObjects.length > 0) {
+            console.log('配置已更新，重新过滤对象列表');
+            this.filterObjects();
+        }
+    }
+
+    /**
+     * 设置配置变化监听器
+     */
+    setupConfigListener() {
+        userConfig.onConfigChanged((changes) => {
+            console.log('配置已更改:', changes);
+            
+            // 重新加载配置
+            this.loadUserConfig();
+        });
+    }
+
+    /**
+     * 获取配置值
+     */
+    getConfig(key) {
+        return this.userConfig ? this.userConfig[key] : null;
+    }
+
+    /**
+     * 设置配置值
+     */
+    async setConfig(key, value) {
+        try {
+            await userConfig.setConfig(key, value);
+            this.userConfig[key] = value;
+            console.log(`配置已更新: ${key} = ${value}`);
+        } catch (error) {
+            console.error('设置配置失败:', error);
+        }
     }
 
     // 绑定设置面板事件

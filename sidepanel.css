@@ -11,6 +11,92 @@ body {
     line-height: 1.5;
     color: #333;
     background-color: #f8f9fa;
+    --sidebar-width: 400px;
+}
+
+/* 深色主题 */
+body.dark-theme {
+    color: #e0e0e0;
+    background-color: #1a1a1a;
+}
+
+body.dark-theme .header {
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+}
+
+body.dark-theme .section {
+    background-color: #2d2d2d;
+    border-color: #404040;
+}
+
+body.dark-theme .object-item,
+body.dark-theme .field-item {
+    background-color: #3a3a3a;
+    border-color: #555;
+    color: #e0e0e0;
+}
+
+body.dark-theme .object-item:hover,
+body.dark-theme .field-item:hover {
+    background-color: #4a4a4a;
+}
+
+body.dark-theme .object-item.selected,
+body.dark-theme .field-item.selected {
+    background-color: #0070d2;
+    border-color: #005fb2;
+}
+
+body.dark-theme .search-input,
+body.dark-theme .field-parser-input {
+    background-color: #3a3a3a;
+    border-color: #555;
+    color: #e0e0e0;
+}
+
+body.dark-theme .search-input:focus,
+body.dark-theme .field-parser-input:focus {
+    border-color: #0070d2;
+    box-shadow: 0 0 0 2px rgba(0, 112, 210, 0.2);
+}
+
+body.dark-theme .btn {
+    background-color: #4a4a4a;
+    border-color: #666;
+    color: #e0e0e0;
+}
+
+body.dark-theme .btn:hover {
+    background-color: #5a5a5a;
+}
+
+body.dark-theme .btn-primary {
+    background-color: #0070d2;
+    border-color: #005fb2;
+}
+
+body.dark-theme .btn-primary:hover {
+    background-color: #005fb2;
+}
+
+body.dark-theme .soql-textarea {
+    background-color: #2d2d2d;
+    border-color: #555;
+    color: #e0e0e0;
+}
+
+body.dark-theme .environment-select {
+    background-color: #3a3a3a;
+    border-color: #555;
+    color: #e0e0e0;
+}
+
+body.dark-theme .filter-option input[type="radio"] + span {
+    color: #e0e0e0;
+}
+
+body.dark-theme .empty-state {
+    color: #999;
 }
 
 .container {
@@ -122,6 +208,7 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0; /* 允许flex子元素收缩 */
 }
 
 .environment-label {
@@ -129,10 +216,13 @@ body {
     font-weight: 500;
     color: #495057;
     white-space: nowrap;
+    flex-shrink: 0; /* 标签不收缩 */
 }
 
 .environment-select {
     flex: 1;
+    min-width: 0; /* 允许收缩到内容宽度以下 */
+    max-width: 100%; /* 防止超出容器 */
     padding: 8px 12px;
     border: 1px solid #ced4da;
     border-radius: 6px;
@@ -141,6 +231,8 @@ body {
     color: #495057;
     cursor: pointer;
     transition: border-color 0.2s ease;
+    overflow: hidden; /* 隐藏超长文本 */
+    text-overflow: ellipsis; /* 显示省略号 */
 }
 
 .environment-select:focus {
@@ -201,7 +293,7 @@ body {
     position: fixed;
     top: 20px;
     left: 20px;
-    right: 20px;
+    right: 100px;
     background: #d4edda;
     border: 1px solid #c3e6cb;
     border-radius: 6px;

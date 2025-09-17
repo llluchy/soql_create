@@ -19,9 +19,25 @@ chrome.runtime.onInstalled.addListener((details) => {
 // ========================================
 // 插件图标点击事件
 // ========================================
-// chrome.action.onClicked.addListener((tab) => {
-//     console.log('插件图标点击事件，如果操作具有弹出式窗口，则不会触发此事件。');
-// });
+chrome.action.onClicked.addListener(async (tab) => {
+    console.log('插件图标点击事件');
+    try {
+        // 获取用户配置的默认打开方式
+        const config = await chrome.storage.sync.get(['defaultOpenMode']);
+        const defaultMode = config.defaultOpenMode?.mode || 'sidepanel';
+        
+        if (defaultMode === 'tab') {
+            // 打开标签页
+            chrome.tabs.create({
+                url: chrome.runtime.getURL('expand.html')
+            });
+            console.log('已打开标签页');
+        }
+        // 如果是 sidepanel 模式，由 Chrome 自动处理侧边栏打开
+    } catch (error) {
+        console.error('处理插件图标点击失败:', error);
+    }
+});
 
 // ========================================
 // 消息监听器 - 处理来自该插件其他模块的消息
@@ -197,16 +213,38 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
 // ========================================
 // 初始化侧边栏设置
 // ========================================
-// try {
-    // console.log('初始化侧边栏设置');
-    // if (chrome.sidePanel) {
-        // 设置点击快捷栏按钮打开侧边栏的行为
-        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-        // chrome.sidePanel.setOptions({
-        //     path: 'sidepanel.html',
-        //     enabled: true
-        // });
-    // }
-// } catch (error) {
-    // 忽略设置错误
-// }
+async function initializeSidePanel() {
+    try {
+        console.log('初始化侧边栏设置');
+        if (chrome.sidePanel) {
+            // 获取用户配置的默认打开方式
+            const config = await chrome.storage.sync.get(['defaultOpenMode']);
+            const defaultMode = config.defaultOpenMode?.mode || 'sidepanel';
+            
+            if (defaultMode === 'sidepanel') {
+                // 设置点击快捷栏按钮打开侧边栏的行为
+                chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+                console.log('已设置侧边栏为默认打开方式');
+            } else {
+                // 设置点击快捷栏按钮打开标签页的行为
+                chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
+                console.log('已设置标签页为默认打开方式');
+            }
+        }
+    } catch (error) {
+        console.error('初始化侧边栏设置失败:', error);
+    }
+}
+
+// 初始化侧边栏设置
+initializeSidePanel();
+
+// ========================================
+// 监听配置变化
+// ========================================
+chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'sync' && changes.defaultOpenMode) {
+        console.log('检测到默认打开方式配置变化，重新初始化侧边栏设置');
+        initializeSidePanel();
+    }
+});
