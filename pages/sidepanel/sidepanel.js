@@ -402,76 +402,22 @@ class SOQLCreator {
 
     /**
      * 加载Salesforce对象列表的核心逻辑
-     * 不包含会话获取，直接使用已设置的会话
+     * 使用分层架构：应用级筛选 + 页面级筛选
      */
     async loadObjectsInternal() {
-        // 调用Salesforce API获取对象列表
-        const result = await soqlExecutor.getSObjects();
-        
-        if (result && result.sobjects && result.sobjects.length > 0) {
-            // 获取用户配置的白名单设置
-            const userConfig = await this.getUserConfig();
-            console.log('完整用户配置:', userConfig);
+        try {
+            // 1. 获取应用级筛选后的对象列表（白名单筛选、权限筛选、数据清洗）
+            this.allObjects = await objectService.getApplicationFilteredObjects(this.sfHost);
             
-            const whitelistConfig = userConfig.objectWhitelist || {
-                allObjects: [],
-                selectedObjects: []
-            };
-            
-            console.log('白名单配置:', whitelistConfig);
-            console.log('标准对象白名单:', SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST);
-            
-            // 过滤和转换对象数据
-            const allObjects = result.sobjects
-                .filter(obj => obj.queryable === true && obj.retrieveable === true) // 只保留可查询的对象
-                .map(obj => ({
-                    name: obj.name,
-                    label: obj.label || obj.name,
-                    apiName: obj.name,
-                    description: obj.description || '',
-                    createable: obj.createable || false,
-                    updateable: obj.updateable || false,
-                    deletable: obj.deletable || false
-                }));
-            
-            // 应用白名单筛选逻辑
-            this.allObjects = allObjects.filter(obj => {
-                // 检查对象是否在标准对象白名单中
-                const isInStandardWhitelist = SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST.includes(obj.name);
-                
-                if (isInStandardWhitelist) {
-                    // 如果在标准对象白名单中，检查是否被用户选中
-                    // 如果selectedObjects为空，表示用户没有设置过白名单，显示所有标准对象
-                    if (whitelistConfig.selectedObjects.length === 0) {
-                        console.log(`标准对象 ${obj.name} 无白名单设置，直接显示`);
-                        return true;
-                    } else {
-                        // 如果设置了白名单，只有选中的才显示
-                        const isSelected = whitelistConfig.selectedObjects.includes(obj.name);
-                        console.log(`标准对象 ${obj.name} 白名单状态:`, isSelected);
-                        return isSelected;
-                    }
-                } else {
-                    // 如果不在标准对象白名单中，不做限制，直接显示
-                    console.log(`非标准对象 ${obj.name} 直接显示`);
-                    return true;
-                }
-            });
-            
-            console.log(`白名单筛选结果: ${this.allObjects.length}/${allObjects.length} 个对象`);
-            
-            // 按标签名称排序
-            this.allObjects.sort((a, b) => (a.label || a.name).localeCompare(b.label || b.name));
-            
-            // 初始化显示列表
-            this.objects = [...this.allObjects];
+            // 2. 应用页面级筛选（搜索、类型筛选）
+            this.objects = this.applyPageLevelFilters(this.allObjects);
             
             // 更新UI显示
             this.hideLoadingStatus(document.getElementById('objectList'));
             this.populateObjectList();
             this.showMessage(`成功加载 ${this.allObjects.length} 个对象`, 'success');
             console.log(`成功加载 ${this.allObjects.length} 个对象`);
-        } else {
+        } catch (error) {
             // 没有获取到对象数据
             this.hideLoadingStatus(document.getElementById('objectList'));
             this.showMessage('无法获取对象列表，请检查权限', 'error');
@@ -541,82 +487,18 @@ class SOQLCreator {
             this.showMessage('正在加载字段列表...');
             console.log('正在加载字段列表...');
             
-            // 调用Salesforce API获取对象字段描述
-            const result = await soqlExecutor.describeSObject(objectApiName);
+            // 使用统一的对象服务获取字段列表
+            this.fields[objectApiName] = await objectService.getObjectFields(objectApiName);
             
-            if (result && result.fields && result.fields.length > 0) {
-                // 过滤出可查询的字段
-                // 注意：Salesforce字段没有queryable和retrieveable属性
-                // 使用deprecatedAndHidden和sortable属性来判断字段是否可用
-                const queryableFields = result.fields
-                    .filter(field => {
-                        // 过滤掉隐藏和废弃的字段
-                        if (field.deprecatedAndHidden === true) return false;
-                        // 过滤掉不可排序的字段（通常表示不可查询）
-                        if (field.sortable === false) return false;
-                        return true;
-                    })
-                    .sort((a, b) => a.label.localeCompare(b.label)); // 按标签名称排序
-                
-                // 转换为内部格式并缓存
-                const fieldsMap = {};
-                queryableFields.forEach(field => {
-                    fieldsMap[field.name] = {
-                        name: field.name,
-                        label: field.label || field.name,
-                        type: field.type || 'string',
-                        required: field.nillable === false,
-                        unique: field.unique === true,
-                        length: field.length,
-                        precision: field.precision,
-                        scale: field.scale,
-                        picklistValues: field.picklistValues || [],
-                        referenceTo: field.referenceTo || [],
-                        relationshipName: field.relationshipName || null,
-                        // Salesforce字段属性
-                        createable: field.createable,
-                        updateable: field.updateable,
-                        filterable: field.filterable,
-                        sortable: field.sortable,
-                        groupable: field.groupable,
-                        aggregatable: field.aggregatable,
-                        custom: field.custom,
-                        soapType: field.soapType,
-                        inlineHelpText: field.inlineHelpText,
-                        // 字段描述信息
-                        description: field.inlineHelpText || field.label || field.name
-                    };
-                });
-                
-                // 缓存字段数据
-                this.fields[objectApiName] = fieldsMap;
-                
-                // 更新UI显示
-                this.hideLoadingStatus(document.getElementById('fieldList'));
-                this.populateFieldList();
-                this.showMessage(`成功加载 ${Object.keys(fieldsMap).length} 个字段`, 'success');
-                console.log(`成功加载 ${Object.keys(fieldsMap).length} 个字段`);
-            } else {
-                // 没有获取到字段数据
-                this.hideLoadingStatus(document.getElementById('fieldList'));
-                this.showMessage('无法获取字段列表，请检查权限', 'error');
-                console.log('无法获取字段列表，请检查权限');
-                this.fields[objectApiName] = {};
-                this.populateFieldList();
-            }
+            // 更新UI显示
+            this.hideLoadingStatus(document.getElementById('fieldList'));
+            this.populateFieldList();
+            this.showMessage(`成功加载 ${Object.keys(this.fields[objectApiName]).length} 个字段`, 'success');
+            console.log(`成功加载 ${Object.keys(this.fields[objectApiName]).length} 个字段`);
         } catch (error) {
             this.hideLoadingStatus(document.getElementById('fieldList'));
             
-            // 检查是否是会话失效错误
-            // if (error.message && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
-            //     const environmentKey = this.currentEnvironment ? this.currentEnvironment.key : this.sfHost;
-            //     this.handleSessionExpired(environmentKey);
-            //     // 自动重试一次
-            //     setTimeout(() => this.loadFields(objectApiName), 1000);
-            //     return;
-            // }
-            
-            // 处理其他错误
+            // 处理错误
             ErrorHandler.handle(error, 'loadFields');
             this.fields[objectApiName] = {};
             this.populateFieldList();
@@ -812,11 +694,26 @@ class SOQLCreator {
         return false;
     }
 
+    /**
+     * 应用页面级筛选
+     * 处理搜索和类型筛选
+     * @param {Array} objects - 应用级筛选后的对象列表
+     * @returns {Array} 页面级筛选后的对象列表
+     */
+    applyPageLevelFilters(objects) {
+        const searchTerm = document.getElementById('objectSearch').value.toLowerCase().trim();
+        const selectedType = document.querySelector('input[name="objectType"]:checked').value;
+        
+        // 使用统一的对象服务进行页面级筛选
+        return objectService.filterObjectsForPage(objects, {
+            objectType: selectedType,
+            searchTerm: searchTerm
+        });
+    }
+
     // 过滤对象列表
     filterObjects() {
         const objectList = document.getElementById('objectList');
-        const searchTerm = document.getElementById('objectSearch').value.toLowerCase().trim();
-        const selectedType = document.querySelector('input[name="objectType"]:checked').value;
         
         // 如果没有备份数据，直接返回
         if (this.allObjects.length === 0) {
@@ -824,80 +721,24 @@ class SOQLCreator {
             return;
         }
         
+        // 应用页面级筛选
+        this.objects = this.applyPageLevelFilters(this.allObjects);
+        
         // 清空列表
         objectList.innerHTML = '';
         
-        // 从备份数据中筛选对象
-        let filteredObjects = this.allObjects.filter(obj => {
-            const objectType = this.getObjectType(obj);
-            
-            // 过滤掉Share对象
-            if (objectType === 'share') {
-                return false;
-            }
-            
-            // 应用白名单过滤
-            if (this.userConfig && this.userConfig.objectWhitelist) {
-                // 检查对象是否在白名单中（包括选中的和未选中的）
-                const isInWhitelist = this.isObjectInWhitelist(obj.name);
-                if (isInWhitelist) {
-                    // 在白名单中，只有选中的才显示
-                    return this.userConfig.objectWhitelist.selectedObjects.includes(obj.name);
-                }
-            }
-            // 白名单以外的对象正常显示
-            
-            // 对于业务对象（包含标准对象和自定义对象），根据设置决定是否启用白名单筛选
-            if (objectType === 'business') {
-                const enableFilter = localStorage.getItem('enableStandardObjectFilter') !== 'false';
-                if (enableFilter) {
-                    // 标准对象需要检查白名单
-                    if (obj.name.endsWith('__c')) {
-                        // 自定义对象不做限制
-                        return true;
-                    } else {
-                        // 标准对象必须在白名单中
-                        return SOQL_CONSTANTS.isStandardObjectInWhitelist(obj.name);
-                    }
-                }
-                // 如果禁用筛选，显示所有业务对象
-                return true;
-            }
-            
-            // 其他类型的对象（自定义、元数据、系统）都显示
-            return true;
-        });
-        
-        // 应用类型筛选
-        filteredObjects = filteredObjects.filter(obj => {
-            const objectType = this.getObjectType(obj);
-            return objectType === selectedType;
-        });
-        
-        // 应用搜索筛选
-        if (searchTerm) {
-            filteredObjects = filteredObjects.filter(obj => {
-                const labelMatch = obj.label.toLowerCase().includes(searchTerm);
-                const apiMatch = obj.name.toLowerCase().includes(searchTerm);
-                return labelMatch || apiMatch;
-            });
-        }
-        
-        // 按标签名称排序
-        filteredObjects.sort((a, b) => a.label.localeCompare(b.label));
-        
         // 如果没有匹配的对象，显示空状态提示
-        if (filteredObjects.length === 0) {
+        if (this.objects.length === 0) {
             objectList.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">没有找到匹配的对象</div><div class="empty-description">请尝试调整筛选条件或搜索关键词</div></div>';
             return;
         }
         
         // 重新渲染对象列表
-        filteredObjects.forEach(obj => {
+        this.objects.forEach(obj => {
             const objectItem = document.createElement('div');
             objectItem.className = 'object-item';
             objectItem.dataset.apiName = obj.apiName;
-            objectItem.dataset.objectType = this.getObjectType(obj);
+            objectItem.dataset.objectType = objectService.getObjectType(obj);
             
             const objectInfo = document.createElement('div');
             objectInfo.className = 'object-info';
@@ -1030,7 +871,8 @@ class SOQLCreator {
     selectCommonFields() {
         if (!this.currentObject) return;
         
-        const commonFieldNames = ['Id', 'Name', 'CreatedDate'];
+        // 使用统一的对象服务获取常用字段
+        const commonFieldNames = objectService.getCommonFields(this.currentObject.apiName);
         this.selectedFields.clear();
         
         const checkboxes = document.querySelectorAll('#fieldList input[type="checkbox"]');
