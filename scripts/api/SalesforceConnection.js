@@ -427,7 +427,104 @@ class SOQLExecutor {
         }
     }
 
-    // 获取对象描述
+    /**
+     * 获取对象字段列表
+     * Transfer-Encoding: chunked 
+     * Content-Type: application/json; 
+     * charset=UTF-8 Server:
+     * {
+     *     "name" : "Account",
+     *     "fields" : [
+     *         {
+     *             "length" : 18,
+     *             "name" : "Id",
+     *             "type" : "id",
+     *             "defaultValue" : { "value" : null },
+     *             "updateable" : false,
+     *             "label" : "Account ID",
+     *             ...
+     *         },
+     *         ...
+     *     ],
+     *     "updateable" : true,
+     *     "label" : "Account",
+     *     ...
+     *     "urls" : {  
+     *         "uiEditTemplate" : "https://MyDomainName.my.salesforce.com/{ID}/e",  
+     *         "sobject" : "/services/data/v65.0/sobjects/Account",  
+     *         "uiDetailTemplate" : "https://MyDomainName.my.salesforce.com/{ID}",  
+     *         "describe" : "/services/data/v65.0/sobjects/Account/describe",  
+     *         "rowTemplate" : "/services/data/v65.0/sobjects/Account/{ID}",  
+     *         "uiNewRecord" : "https://MyDomainName.my.salesforce.com/001/e"
+     *     },
+     *     "childRelationships" : [ 
+     *         {  
+     *             "field" : "ParentId",  
+     *             "deprecatedAndHidden" : false,  
+     *             ...
+     *         }, 
+     *         ...
+     *     ],
+     *     "createable" : true,
+     *     "customSetting" : false,
+     *     ...
+     * }
+     * @returns {Array} 对象字段列表
+     */
+    async getObjectFields(sobjectName) {
+        const url = `/services/data/v${this.apiVersion}/sobjects/${sobjectName}/fields/`;
+        
+        try {
+            const result = await this.sfConn.rest(url);
+            return result;
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    /**
+     * 获取对象描述信息
+     * Transfer-Encoding: chunked 
+     * Content-Type: application/json; 
+     * charset=UTF-8 Server:
+     * {
+     *  "name" : "Account",
+     *  "fields" : [
+     *     {
+     *       "length" : 18,
+     *       "name" : "Id",
+     *       "type" : "id",
+     *       "defaultValue" : { "value" : null },
+     *       "updateable" : false,
+     *       "label" : "Account ID",
+     *       ...
+     *     },
+     *     ...
+     *   ],
+     *   "updateable" : true,
+     *   "label" : "Account",
+     *   ...
+     *   "urls" : {  
+     *     "uiEditTemplate" : "https://MyDomainName.my.salesforce.com/{ID}/e",  
+     *     "sobject" : "/services/data/v65.0/sobjects/Account",  
+     *     "uiDetailTemplate" : "https://MyDomainName.my.salesforce.com/{ID}",  
+     *     "describe" : "/services/data/v65.0/sobjects/Account/describe",  
+     *     "rowTemplate" : "/services/data/v65.0/sobjects/Account/{ID}",  
+     *     "uiNewRecord" : "https://MyDomainName.my.salesforce.com/001/e"
+     *   },
+     *   "childRelationships" : [ 
+     *     {  
+     *       "field" : "ParentId",  
+     *       "deprecatedAndHidden" : false,  
+     *       ...
+     *     }, 
+     *     ...
+     *   ],
+     *   "createable" : true,
+     *   "customSetting" : false,
+     *   ...
+     * }
+     */
     async describeSObject(sobjectName) {
         const url = `/services/data/v${this.apiVersion}/sobjects/${sobjectName}/describe/`;
         
@@ -439,7 +536,43 @@ class SOQLExecutor {
         }
     }
 
-    // 获取所有对象列表
+    /**
+     * 获取所有对象列表
+     * Transfer-Encoding: chunked 
+     * Content-Type: application/json; 
+     * charset=UTF-8 Server:
+     * {
+     *  "encoding" : "UTF-8",
+     *  "maxBatchSize" : 200,
+     *  "sobjects" : [ {
+     *     "name" : "Account",
+     *     "label" : "Account",
+     *     "custom" : false,
+     *     "keyPrefix" : "001",
+     *     "updateable" : true,
+     *     "searchable" : true,
+     *     "labelPlural" : "Accounts",
+     *     "layoutable" : true,
+     *     "activateable" : false,
+     *     "urls" : { "sobject" : "/services/data/v65.0/sobjects/Account",
+     *     "describe" : "/services/data/v65.0/sobjects/Account/describe",
+     *     "rowTemplate" : "/services/data/v65.0/sobjects/Account/{ID}" },
+     *     "createable" : true,
+     *     "customSetting" : false,
+     *     "deletable" : true,
+     *     "deprecatedAndHidden" : false,
+     *     "feedEnabled" : false,
+     *     "mergeable" : true,
+     *     "queryable" : true,
+     *     "replicateable" : true,
+     *     "retrieveable" : true,
+     *     "undeletable" : true,
+     *     "triggerable" : true },
+     *    },
+     * ...
+     * }
+     * @returns {Array} 对象列表
+     */
     async getSObjects() {
         const url = `/services/data/v${this.apiVersion}/sobjects/`;
         
@@ -579,7 +712,7 @@ class ObjectService {
             
             console.log('ObjectService: 白名单配置:', whitelistConfig);
             
-            // 5. 应用级筛选：权限筛选 - 只保留可查询的对象
+            // 5. 应用级筛选：权限筛选 - 只保留可查询的对象，并按name字母顺序排序
             const queryableObjects = result.sobjects
                 .filter(obj => obj.queryable === true && obj.retrieveable === true)
                 .map(obj => ({
@@ -591,8 +724,8 @@ class ObjectService {
                     updateable: obj.updateable || false,
                     deletable: obj.deletable || false,
                     custom: obj.custom || false // 是否是自定义对象
-                }));
-            
+                }))
+                .sort((a, b) => a.name.localeCompare(b.name));
             // 6. 应用级筛选：白名单筛选
             const whitelistFilteredObjects = queryableObjects.filter(obj => {
                 // 首先判断是否有白名单，如果没有白名单，那么筛选也就不生效了
@@ -616,6 +749,9 @@ class ObjectService {
                 const objectType = this.getObjectType(obj);
                 return objectType !== 'share';
             });
+            
+
+
             
             console.log(`ObjectService: 应用级筛选结果: ${cleanedObjects.length}/${queryableObjects.length} 个对象`);
             
@@ -864,20 +1000,8 @@ class ObjectService {
      */
     getCommonFields(objectApiName) {
         // 通用常用字段
-        const commonFields = ['Id', 'Name', 'CreatedDate', 'LastModifiedDate', 'CreatedById', 'LastModifiedById'];
+        const commonFields = ['Id', 'Name'];
         
-        // 根据对象类型添加特定常用字段
-        const specificFields = this.getObjectSpecificCommonFields(objectApiName);
-        
-        return [...commonFields, ...specificFields];
-    }
-
-    /**
-     * 获取对象特定的常用字段
-     * @param {string} objectApiName - 对象API名称
-     * @returns {Array} 特定常用字段列表
-     */
-    getObjectSpecificCommonFields(objectApiName) {
         const fieldMap = {
             'Account': ['Type', 'Industry', 'Phone', 'Website'],
             'Contact': ['FirstName', 'LastName', 'Email', 'Phone', 'AccountId'],
@@ -889,7 +1013,10 @@ class ObjectService {
             'User': ['Username', 'Email', 'FirstName', 'LastName', 'IsActive', 'ProfileId']
         };
         
-        return fieldMap[objectApiName] || [];
+        // 根据对象类型添加特定常用字段
+        const specificFields = fieldMap[objectApiName] || [];
+        
+        return [...commonFields, ...specificFields];
     }
 
     /**

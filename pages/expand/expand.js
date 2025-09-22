@@ -934,6 +934,9 @@ class SOQLCreator {
         this.showMessage('已取消选择所有字段', 'success');
     }
 
+    /**
+     * 选择常用字段
+     */
     selectCommonFields() {
         if (!this.currentObject) return;
         
