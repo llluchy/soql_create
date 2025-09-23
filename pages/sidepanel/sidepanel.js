@@ -22,14 +22,19 @@ class SOQLCreator {
         this.currentEnvironment = null; // 当前选中的环境信息
         
         // 权限和会话管理
-        // 移除Session缓存，每次都实时获取Session
+        this.sfConn = new SalesforceConnection(); // Salesforce连接实例
+        this.soqlExecutor = new SOQLExecutor(this.sfConn); // SOQL执行器实例
+        this.objectService = new ObjectService(this.sfConn, this.soqlExecutor); // 对象服务实例
         
         // 配置和常量
         this.standardObjectWhitelist = SOQL_CONSTANTS.STANDARD_OBJECT_WHITELIST; // 标准对象白名单
         this.userConfig = null; // 用户配置对象
         
         // 初始化应用
-        this.init();
+        this.init().catch(error => {
+            console.error('初始化失败:', error);
+            this.showMessage('初始化失败，请刷新页面重试', 'error');
+        });
     }
 
     /**
@@ -406,9 +411,12 @@ class SOQLCreator {
      */
     async loadObjectsInternal() {
         try {
+            console.log('loadObjectsInternal - 开始加载对象列表');
             // 1. 获取应用级筛选后的对象列表（白名单筛选、权限筛选、数据清洗）
-            this.allObjects = await objectService.getApplicationFilteredObjects(this.sfHost);
+            this.allObjects = await this.objectService.getApplicationFilteredObjects(this.sfHost);
             
+            console.log('loadObjectsInternal - 获取应用级筛选后的对象列表完成', this.allObjects);
+
             // 2. 应用页面级筛选（搜索、类型筛选）
             this.objects = this.applyPageLevelFilters(this.allObjects);
             
@@ -444,9 +452,9 @@ class SOQLCreator {
             
             // 实时获取Session，不使用缓存
             console.log('实时获取Session，主机:', this.sfHost);
-            await sfConn.getSession(this.sfHost);
+            await this.sfConn.getSession(this.sfHost);
             
-            if (!sfConn.sessionId) {
+            if (!this.sfConn.sessionId) {
                 this.hideLoadingStatus(document.getElementById('objectList'));
                 this.showMessage('无法获取Salesforce会话，请检查登录状态', 'error');
                 console.log('无法获取Salesforce会话，请检查登录状态');
@@ -488,7 +496,7 @@ class SOQLCreator {
             console.log('正在加载字段列表...');
             
             // 使用统一的对象服务获取字段列表
-            this.fields[objectApiName] = await objectService.getObjectFields(objectApiName);
+            this.fields[objectApiName] = await this.objectService.getObjectFields(objectApiName);
             
             // 更新UI显示
             this.hideLoadingStatus(document.getElementById('fieldList'));
@@ -705,7 +713,7 @@ class SOQLCreator {
         const selectedType = document.querySelector('input[name="objectType"]:checked').value;
         
         // 使用统一的对象服务进行页面级筛选
-        return objectService.filterObjectsForPage(objects, {
+        return this.objectService.filterObjectsForPage(objects, {
             objectType: selectedType,
             searchTerm: searchTerm
         });
@@ -738,7 +746,7 @@ class SOQLCreator {
             const objectItem = document.createElement('div');
             objectItem.className = 'object-item';
             objectItem.dataset.apiName = obj.apiName;
-            objectItem.dataset.objectType = objectService.getObjectType(obj);
+            objectItem.dataset.objectType = this.objectService.getObjectType(obj);
             
             const objectInfo = document.createElement('div');
             objectInfo.className = 'object-info';
@@ -821,6 +829,19 @@ class SOQLCreator {
             label.appendChild(fieldInfo);
             fieldItem.appendChild(checkbox);
             fieldItem.appendChild(label);
+            
+            // 添加点击整个field-item区域选择字段的功能
+            fieldItem.addEventListener('click', (e) => {
+                // 如果点击的是checkbox或label，不处理（避免重复触发）
+                if (e.target === checkbox || e.target.closest('label')) {
+                    return;
+                }
+                
+                // 切换checkbox状态
+                checkbox.checked = !checkbox.checked;
+                this.onFieldChange(checkbox.value, checkbox.checked);
+            });
+            
             fieldList.appendChild(fieldItem);
         });
 
@@ -872,7 +893,7 @@ class SOQLCreator {
         if (!this.currentObject) return;
         
         // 使用统一的对象服务获取常用字段
-        const commonFieldNames = objectService.getCommonFields(this.currentObject.apiName);
+        const commonFieldNames = this.objectService.getCommonFields(this.currentObject.apiName);
         this.selectedFields.clear();
         
         const checkboxes = document.querySelectorAll('#fieldList input[type="checkbox"]');
@@ -1380,18 +1401,9 @@ class SOQLCreator {
 
 /**
  * 页面加载完成后的初始化逻辑
- * 处理OAuth回调和创建SOQL Creator实例
+ * 创建SOQL Creator实例
  */
 document.addEventListener('DOMContentLoaded', () => {
-    // 检查是否是OAuth回调页面
-    if (window.location.hash.includes('access_token')) {
-        const result = oauthManager.handleOAuthCallback();
-        if (result.success) {
-            console.log('SOQL Creator: OAuth回调处理成功');
-            // 可以在这里显示成功消息或重定向
-        }
-    }
-    
     // 创建并初始化SOQL Creator实例
     window.soqlCreator = new SOQLCreator();
 });

@@ -11,6 +11,11 @@ class SOQLCreator {
         this.availableEnvironments = [];
         this.selectedEnvironment = null;
         
+        // 权限和会话管理
+        this.sfConn = new SalesforceConnection(); // Salesforce连接实例
+        this.soqlExecutor = new SOQLExecutor(this.sfConn); // SOQL执行器实例
+        this.objectService = new ObjectService(this.sfConn, this.soqlExecutor); // 对象服务实例
+        
         this.init();
     }
 
@@ -204,11 +209,11 @@ class SOQLCreator {
         }
         
         // 测试/开发环境
-        if (host.includes('test') || 
-            host.includes('dev') || 
-            host.includes('staging')) {
-            return 'sandbox';
-        }
+        // if (host.includes('test') || 
+        //     host.includes('dev') || 
+        //     host.includes('staging')) {
+        //     return 'sandbox';
+        // }
         
         // 默认为生产环境
         return 'production';
@@ -303,7 +308,7 @@ class SOQLCreator {
     async fetchObjectsFromSalesforce() {
         try {
             // 使用统一的对象服务获取应用级筛选后的对象列表
-            return await objectService.getApplicationFilteredObjects(this.sfHost);
+            return await this.objectService.getApplicationFilteredObjects(this.sfHost);
         } catch (error) {
             console.error('从Salesforce获取对象失败:', error);
             throw error;
@@ -354,7 +359,7 @@ class SOQLCreator {
             const objectElement = document.createElement('div');
             objectElement.className = 'object-item';
             objectElement.dataset.object = obj.name;
-            objectElement.dataset.type = objectService.getObjectType(obj); // 使用统一服务的getObjectType方法
+            objectElement.dataset.type = this.objectService.getObjectType(obj); // 使用统一服务的getObjectType方法
             
             objectElement.innerHTML = `
                 <span class="object-name">${obj.name}</span>
@@ -448,7 +453,7 @@ class SOQLCreator {
     async fetchFields(objectName) {
         try {
             // 使用统一的对象服务获取字段列表
-            const fieldsMap = await objectService.getObjectFields(objectName);
+            const fieldsMap = await this.objectService.getObjectFields(objectName);
             
             // 转换为expand.js期望的格式
             return Object.values(fieldsMap).map(field => ({
@@ -527,7 +532,7 @@ class SOQLCreator {
                         <div class="field-item" data-field="${field.name}">
                             <input type="checkbox" class="field-checkbox" ${field.required ? 'checked' : ''}>
                             <span class="field-name">${field.name}</span>
-                            <span class="field-type">${field.type}</span>
+                            <span class="field-label">${field.label}</span>
                         </div>
                     `).join('')}
                 </div>
@@ -535,6 +540,16 @@ class SOQLCreator {
             
             container.appendChild(groupElement);
         });
+        
+        // 将已勾选的必填字段添加到selectedFields中
+        const checkedCheckboxes = container.querySelectorAll('.field-checkbox:checked');
+        checkedCheckboxes.forEach(checkbox => {
+            const fieldName = checkbox.closest('.field-item').dataset.field;
+            this.selectedFields.add(fieldName);
+        });
+        
+        // 更新状态栏
+        this.updateFieldStatus();
     }
 
     // ========================================
@@ -555,7 +570,7 @@ class SOQLCreator {
         const query = `SELECT ${fields} FROM ${this.currentObject} LIMIT 10`;
         
         // 更新 SOQL 显示
-        document.getElementById('generatedQuery').textContent = query;
+        document.getElementById('generatedQuery').value = query;
         
         this.showMessage('SOQL 已生成', 'success');
         console.log('生成的 SOQL:', query);
@@ -565,29 +580,61 @@ class SOQLCreator {
         // 这个方法现在不再自动调用，只在手动生成时使用
         const query = this.generateSOQL();
         if (query) {
-            document.getElementById('generatedQuery').textContent = query;
+            document.getElementById('generatedQuery').value = query;
         }
     }
 
     // ========================================
     // 查询执行
     // ========================================
+    
+    /**
+     * 过滤掉查询结果中的attributes属性
+     * @param {Object} result - Salesforce API返回的查询结果
+     * @returns {Object} 过滤后的结果
+     */
+    filterAttributes(result) {
+        if (!result || !result.records) {
+            return result;
+        }
+        
+        // 深拷贝结果对象
+        const filteredResult = JSON.parse(JSON.stringify(result));
+        
+        // 过滤每条记录的attributes属性
+        filteredResult.records = filteredResult.records.map(record => {
+            const filteredRecord = { ...record };
+            delete filteredRecord.attributes;
+            return filteredRecord;
+        });
+        
+        return filteredResult;
+    }
+    
     async executeQuery() {
         try {
-            const query = this.generateSOQL();
+            const query = document.getElementById('generatedQuery').value.trim();
+            if (!query) {
+                this.showMessage('请输入 SOQL 查询', 'warning');
+                return;
+            }
             console.log('执行查询:', query);
             
             // 显示加载状态
             this.setLoadingState(true);
             
             // 调用 Salesforce API
-            const result = await sfConn.rest('/services/data/v58.0/query/', {
-                method: 'GET',
-                body: { q: query }
+            // 将查询参数编码并添加到URL中
+            const encodedQuery = encodeURIComponent(query);
+            const result = await this.sfConn.rest(`/services/data/v58.0/query/?q=${encodedQuery}`, {
+                method: 'GET'
             });
             
+            // 过滤掉attributes属性
+            const filteredResult = this.filterAttributes(result);
+            
             // 显示结果
-            this.displayResults(result);
+            this.displayResults(filteredResult);
             
         } catch (error) {
             console.error('查询执行失败:', error);
@@ -626,14 +673,14 @@ class SOQLCreator {
     // 界面状态管理
     // ========================================
     setLoadingState(loading) {
-        const executeBtn = document.getElementById('executeBtn');
+        const executeQueryBtn = document.getElementById('executeQueryBtn');
         if (loading) {
-            executeBtn.textContent = '⏳';
-            executeBtn.disabled = true;
+            executeQueryBtn.textContent = '执行中...';
+            executeQueryBtn.disabled = true;
             this.queryStartTime = Date.now();
         } else {
-            executeBtn.textContent = '▶️';
-            executeBtn.disabled = false;
+            executeQueryBtn.textContent = '执行';
+            executeQueryBtn.disabled = false;
         }
     }
 
@@ -645,6 +692,100 @@ class SOQLCreator {
     updateObjectStatus() {
         const selectedObjectElement = document.getElementById('selectedObject');
         selectedObjectElement.textContent = this.currentObject || '未选择对象';
+    }
+
+    // ========================================
+    // 拖拽调整高度功能
+    // ========================================
+    bindResizeEvents() {
+        const resizeHandle = document.getElementById('resizeHandle');
+        const querySection = document.querySelector('.query-display-section');
+        const resultSection = document.querySelector('.result-section');
+        const mainContent = document.querySelector('.main-content');
+        
+        let isResizing = false;
+        let startY = 0;
+        let startQueryHeight = 0;
+        let startResultHeight = 0;
+        
+        resizeHandle.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startY = e.clientY;
+            startQueryHeight = querySection.offsetHeight;
+            startResultHeight = resultSection.offsetHeight;
+            
+            // 添加全局事件监听器
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            
+            // 添加拖拽样式
+            document.body.style.cursor = 'ns-resize';
+            document.body.style.userSelect = 'none';
+            
+            e.preventDefault();
+        });
+        
+        function handleMouseMove(e) {
+            if (!isResizing) return;
+            
+            const deltaY = e.clientY - startY;
+            const mainContentHeight = mainContent.offsetHeight;
+            const resizeHandleHeight = resizeHandle.offsetHeight;
+            const availableHeight = mainContentHeight - resizeHandleHeight;
+            
+            // 计算新的高度
+            let newQueryHeight = startQueryHeight + deltaY;
+            let newResultHeight = startResultHeight - deltaY;
+            
+            // 设置最小和最大高度限制
+            const minQueryHeight = 100;
+            const maxQueryHeight = availableHeight * 0.7;
+            const minResultHeight = 200;
+            
+            newQueryHeight = Math.max(minQueryHeight, Math.min(maxQueryHeight, newQueryHeight));
+            newResultHeight = Math.max(minResultHeight, availableHeight - newQueryHeight - resizeHandleHeight);
+            
+            // 应用新高度
+            querySection.style.height = `${newQueryHeight}px`;
+            resultSection.style.height = `${newResultHeight}px`;
+        }
+        
+        function handleMouseUp() {
+            isResizing = false;
+            
+            // 移除全局事件监听器
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            
+            // 移除拖拽样式
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    }
+
+    // ========================================
+    // 键盘快捷键支持
+    // ========================================
+    bindKeyboardEvents() {
+        document.addEventListener('keydown', (e) => {
+            // Ctrl+Enter 或 Cmd+Enter 执行查询
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                this.executeQuery();
+            }
+            
+            // Ctrl+Shift+F 或 Cmd+Shift+F 格式化查询
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+                e.preventDefault();
+                this.formatQuery();
+            }
+            
+            // Ctrl+Shift+C 或 Cmd+Shift+C 复制查询
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
+                e.preventDefault();
+                this.copyQuery();
+            }
+        });
     }
 
     // ========================================
@@ -675,6 +816,29 @@ class SOQLCreator {
             }
         });
 
+        // 点击field-item区域选择字段
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.field-item')) {
+                const fieldItem = e.target.closest('.field-item');
+                const checkbox = fieldItem.querySelector('.field-checkbox');
+                
+                // 如果点击的是checkbox本身，不处理（避免重复触发）
+                if (e.target.classList.contains('field-checkbox')) {
+                    return;
+                }
+                
+                // 切换checkbox状态
+                checkbox.checked = !checkbox.checked;
+                this.handleFieldToggle(checkbox);
+            }
+        });
+
+        // 拖拽调整高度功能
+        this.bindResizeEvents();
+
+        // 键盘快捷键支持
+        this.bindKeyboardEvents();
+
         // 搜索功能
         document.getElementById('objectSearch').addEventListener('input', (e) => {
             this.filterObjects(e.target.value);
@@ -692,7 +856,7 @@ class SOQLCreator {
         });
 
         // 按钮事件
-        document.getElementById('executeBtn').addEventListener('click', () => {
+        document.getElementById('executeQueryBtn').addEventListener('click', () => {
             this.executeQuery();
         });
 
@@ -845,7 +1009,7 @@ class SOQLCreator {
      */
     applyPageLevelFilters(objects, searchTerm = '', filterType = 'all') {
         // 使用统一的对象服务进行页面级筛选
-        return objectService.filterObjectsForPage(objects, {
+        return this.objectService.filterObjectsForPage(objects, {
             objectType: filterType,
             searchTerm: searchTerm
         });
@@ -891,23 +1055,23 @@ class SOQLCreator {
     }
 
     copyQuery() {
-        const query = document.getElementById('generatedQuery').textContent;
+        const query = document.getElementById('generatedQuery').value;
         navigator.clipboard.writeText(query).then(() => {
             this.showMessage('查询已复制到剪贴板');
         });
     }
 
     formatQuery() {
-        const query = document.getElementById('generatedQuery').textContent;
+        const query = document.getElementById('generatedQuery').value;
         // 简单的格式化逻辑
         const formatted = query.replace(/\s+/g, ' ').trim();
-        document.getElementById('generatedQuery').textContent = formatted;
+        document.getElementById('generatedQuery').value = formatted;
     }
 
     clearQuery() {
         this.currentObject = null;
         this.selectedFields.clear();
-        document.getElementById('generatedQuery').textContent = 'SELECT Id FROM Account LIMIT 10';
+        document.getElementById('generatedQuery').value = 'SELECT Id FROM Account LIMIT 10';
         document.getElementById('fieldList').innerHTML = '<div class="empty-state">请先选择对象</div>';
         this.updateObjectStatus();
         this.updateFieldStatus();
@@ -941,7 +1105,7 @@ class SOQLCreator {
         if (!this.currentObject) return;
         
         // 使用统一的对象服务获取常用字段
-        const commonFields = objectService.getCommonFields(this.currentObject);
+        const commonFields = this.objectService.getCommonFields(this.currentObject);
         
         const checkboxes = document.querySelectorAll('.field-checkbox');
         checkboxes.forEach(checkbox => {
@@ -979,7 +1143,7 @@ class SOQLCreator {
     // ========================================
     initializeUI() {
         // 设置默认查询
-        document.getElementById('generatedQuery').textContent = 'SELECT Id FROM Account LIMIT 10';
+        document.getElementById('generatedQuery').value = 'SELECT Id FROM Account LIMIT 10';
         
         // 初始化状态栏
         this.updateObjectStatus();

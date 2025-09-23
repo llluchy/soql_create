@@ -27,25 +27,6 @@
                 </div>
             </div>
             <div class="navbar-right">
-                <button class="btn-icon" title="执行查询" id="executeBtn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polygon points="5,3 19,12 5,21"></polygon>
-                    </svg>
-                </button>
-                <button class="btn-icon" title="保存查询" id="saveBtn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                        <polyline points="17,21 17,13 7,13 7,21"></polyline>
-                        <polyline points="7,3 7,8 15,8"></polyline>
-                    </svg>
-                </button>
-                <button class="btn-icon" title="导出结果" id="exportBtn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7,10 12,15 17,10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
-                </button>
                 <button class="btn-icon" title="设置" id="settingsBtn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="12" cy="12" r="3"></circle>
@@ -129,17 +110,21 @@
                 <!-- SOQL 显示区域 (1/4 高度) -->
                 <section class="query-display-section">
                     <div class="section-header">
-                        <h3>生成的 SOQL</h3>
+                        <h3>SOQL 查询编辑器</h3>
                         <div class="section-controls">
+                            <button class="btn-sm" id="executeQueryBtn">执行</button>
                             <button class="btn-sm" id="copyQueryBtn">复制</button>
                             <button class="btn-sm" id="formatQueryBtn">格式化</button>
                             <button class="btn-sm" id="clearQueryBtn">清空</button>
                         </div>
                     </div>
                     <div class="query-display">
-                        <pre class="query-code" id="generatedQuery">SELECT Id, Name FROM Account LIMIT 10</pre>
+                        <textarea class="query-code" id="generatedQuery" placeholder="在此输入或编辑 SOQL 查询...">SELECT Id, Name FROM Account LIMIT 10</textarea>
                     </div>
                 </section>
+                
+                <!-- 可调整高度的分隔条 -->
+                <div class="resize-handle" id="resizeHandle"></div>
                 
                 <!-- 查询结果区域 (3/4 高度) -->
                 <section class="result-section">
@@ -191,6 +176,9 @@
     <script src="../../scripts/config/constants.js"></script>
     <script src="../../scripts/config/UserConfig.js"></script>
     <script src="../../scripts/api/SalesforceConnection.js"></script>
+    <script src="../../scripts/api/SOQLExecutor.js"></script>
+    <script src="../../scripts/api/ObjectService.js"></script>
+    <script src="../../scripts/api/ErrorHandler.js"></script>
     <script src="expand.js"></script>
 </body>
 </html>
