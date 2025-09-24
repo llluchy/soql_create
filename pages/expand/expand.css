@@ -34,7 +34,7 @@ body {
 .content-area {
     display: flex;
     flex: 1;
-    overflow: visible;
+    overflow: hidden;
     gap: 12px;
     min-height: 0;
 }
@@ -460,7 +460,7 @@ body {
     background: transparent;
     gap: 4px;
     min-height: 0;
-    overflow: visible;
+    overflow: hidden;
 }
 
 .query-display-section {
@@ -521,7 +521,7 @@ body {
     border-radius: 8px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    overflow: visible;
+    overflow: hidden;
 }
 
 .section-header {
@@ -632,13 +632,14 @@ body {
     table-layout: fixed;
 }
 
+
 .result-table th {
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    background: #f8f9fa;
     padding: 8px 12px;
     text-align: left;
     font-weight: 600;
-    color: #333;
-    border-bottom: 1px solid rgba(102, 126, 234, 0.2);
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
     position: sticky;
     top: 0;
     z-index: 1;
@@ -852,4 +853,39 @@ body {
         opacity: 1;
         transform: scale(1) translateY(0);
     }
+}
+
+/* ========================================
+   自定义滚动条样式
+   ======================================== */
+
+/* Webkit浏览器滚动条样式 */
+.result-table-container::-webkit-scrollbar {
+    width: 16px;  /* 竖向滚动条宽度 */
+    height: 16px; /* 横向滚动条高度 */
+}
+
+.result-table-container::-webkit-scrollbar-track {
+    background: rgba(240, 240, 240, 0.5);
+    border-radius: 8px;
+}
+
+.result-table-container::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.6) 0%, rgba(118, 75, 162, 0.6) 100%);
+    border-radius: 8px;
+    border: 2px solid rgba(255, 255, 255, 0.8);
+}
+
+.result-table-container::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.8) 0%, rgba(118, 75, 162, 0.8) 100%);
+}
+
+.result-table-container::-webkit-scrollbar-corner {
+    background: rgba(240, 240, 240, 0.5);
+}
+
+/* Firefox滚动条样式 */
+.result-table-container {
+    scrollbar-width: thick;
+    scrollbar-color: rgba(102, 126, 234, 0.6) rgba(240, 240, 240, 0.5);
 }
